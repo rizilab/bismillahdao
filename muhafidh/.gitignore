@@ -1,0 +1,21 @@
+target/
+**/target/
+dist/
+node_modules/
+
+# Environment files
+.env
+.env.prod
+docker.dev/**/.env
+**/.env
+.env.*local
+
+*address.json
+cex_database*
+
+Config.toml
+.cursor/
+
+*.crt
+*.key
+*.p12

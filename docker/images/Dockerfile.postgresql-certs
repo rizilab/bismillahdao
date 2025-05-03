@@ -1,0 +1,72 @@
+FROM golang:1.20-alpine AS builder
+
+RUN set -x && \
+    apk --no-cache add git gcc libc-dev make openssl musl musl-utils \
+    musl-locales tzdata && \
+    # Create postgres user without specific GID/UID
+    addgroup postgres && \
+    adduser -S -G postgres postgres
+    
+RUN echo 'export LC_ALL=en_US.UTF-8' >> /etc/profile.d/locale.sh && \
+    sed -i 's|LANG=C.UTF-8|LANG=en_US.UTF-8|' /etc/profile.d/locale.sh
+
+WORKDIR /app
+# Create directories for certificates
+RUN mkdir -p /output && \
+    chown -R postgres:postgres /output
+
+# Generate CA certificate
+RUN openssl req -sha256 -new -x509 -days 365 -nodes \
+    -subj "/C=ID/ST=Jakarta/O=Rizilab/OU=Rizilab" \
+    -out ca.crt \
+    -keyout ca.key
+
+# Generate server CSR
+RUN openssl req -sha256 -new -nodes \
+    -subj "/CN=bismillahdao-timescaledb" \
+    -addext "subjectAltName = DNS:db.r4gmi.localhost,DNS:localhost,DNS:127.0.0.1,DNS:0.0.0.0,IP:127.0.0.1,IP:0.0.0.0" \
+    -out server.csr \
+    -keyout server.key
+    
+# Sign server certificate
+RUN openssl x509 -req -sha256 -days 365 \
+    -in server.csr \
+    -CA ca.crt \
+    -CAkey ca.key \
+    -CAcreateserial \
+    -out server.crt
+
+# Generate client CSR
+RUN openssl req -sha256 -new -nodes \
+    -subj "/CN=r4gmi" \
+    -out client.csr \
+    -keyout client.key
+
+# Sign client certificate
+RUN openssl x509 -req -sha256 -days 365 \
+    -in client.csr \
+    -CA ca.crt \
+    -CAkey ca.key \
+    -CAcreateserial \
+    -out client.crt
+    
+RUN openssl pkcs12 -export \
+    -out client.p12 \
+    -inkey client.key \
+    -in client.crt \
+    -certfile ca.crt
+
+# Set proper permissions
+RUN chmod 400 ca.key server.key client.key && \
+    chmod 600 ca.crt server.crt client.crt client.p12
+
+# Copy all certificates to output directory
+RUN cp ca.crt client.crt client.key server.crt server.key client.p12 /output/ && \
+    chmod 400 /output/client.key /output/server.key /output/client.p12 && \
+    chmod 600 /output/ca.crt /output/client.crt /output/server.crt && \
+    chown -R postgres:postgres /output
+
+USER postgres
+WORKDIR /app
+
+CMD ["sh", "-c", "cp -v /output/* /certs-output/ && exit 0"]

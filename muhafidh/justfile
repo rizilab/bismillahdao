@@ -1,0 +1,26 @@
+default:
+  @just --list
+
+# Run the PumpFun token monitor with WebSocket (default)
+monitor:
+  cargo run --release --bin monitor
+
+# Build the PumpFun monitor
+build:
+  cargo build
+
+# Build a release version
+release:
+  cargo build --release
+
+# Run tests
+test:
+  cargo test
+
+# Clean the build artifacts
+clean:
+  cargo clean
+
+# Check the code for errors
+check:
+  cargo check

@@ -1,0 +1,47 @@
+target/
+**/target/
+dist/
+node_modules/
+*/**/dist/
+
+# Environment files
+.env
+.env.prod
+docker/**/.env
+**/.env
+.env.*local
+
+# Data directories
+docker/**/volumes/db/data/*
+!docker/**/volumes/.gitkeep
+**/kong.yaml
+docker/volumes
+
+# misc
+*.crt
+*.pem
+**/*.crt
+**/*.pem
+.DS_Store
+.vault_keys
+
+# Local files for common editors
+.idea
+.vscode
+
+# Remove if exists:
+caddy/
+
+# Vault files
+vault/file/keys
+vault/file/status
+
+#exclude
+twitter-monitor/
+*.crt
+*.key
+*.p12
+
+# Cursor
+.cursor/
+**/.cursor

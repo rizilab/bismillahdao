@@ -1,0 +1,155 @@
+x-env-files: &env_files
+  - path: .env.prod
+    required: true
+  - path: .env.shared
+    required: true
+  - path: .env.local
+    required: false
+  - path: .env
+    required: false
+
+x-logging: &logging
+  driver: json-file
+  options:
+    # Used by promtail to produce labels for Loki
+    tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+
+services:
+  caddy:
+    build:
+      dockerfile: ./Dockerfile.caddy
+      context: .
+    container_name: rizilab-security-caddy
+    restart: unless-stopped
+    logging: *logging
+    command: ["caddy", "docker-proxy"]
+    ports:
+      - "80:80"    # HTTP port
+      - "443:443"   # HTTPS port
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./certs:/etc/ssl/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    env_file: *env_files
+    networks:
+      - rizilab_security_net
+    labels:
+      caddy.1_order: "crowdsec first"
+      caddy.1_debug:
+      caddy.2_log.1_format: "json"
+      caddy.2_log.2_level: "DEBUG"
+      caddy.2_log.3_output: "stderr"
+      caddy.2_order: "rate_limit before basicauth"
+      caddy.2_email: "admin@${RIZILAB_DOMAIN}"
+      caddy.3_servers:
+      caddy.3_servers.trusted_proxies: "cloudflare"
+
+  landing:
+    build:
+      dockerfile: ./Dockerfile.landing-prod
+      context: ../backend/landing
+    container_name: r4gmi-landing
+    develop:
+      watch:
+        - action: sync
+          path: ./../backend/auth/frontend
+          target: /app/frontend
+          ignore:
+            - ./../backend/auth/frontend/node_modules/
+        - action: sync
+          path: ./../backend/auth/frontend/package.json
+          target: /app/frontend
+        - action: sync
+          path: ./../backend/auth/backend
+          target: /app/backend
+        - action: sync
+          path: ./../backend/auth/backend/Cargo.toml
+          target: /app/backend
+    restart: 'no'
+    depends_on:
+      - db
+    env_file: *env_files
+    networks:
+      - r4gmi_net
+    labels:
+      caddy.layer4.:443.@auth: "tls sni auth.r4gmi.localhost"
+      caddy.layer4.:443.route: "@auth"
+      caddy.layer4.:443.route.1_tls:
+      caddy.layer4.:443.route.2_proxy: "{{upstreams 8080}}"
+      caddy_1: auth.r4gmi.localhost
+      caddy_1.1_tls: internal
+      caddy_1.2_reverse_proxy: "{{upstreams 8080}}"
+
+  db:
+    image: postgres:17.2-bullseye
+    container_name: r4gmi-db
+    restart: always
+    volumes:
+      - ./volumes/db/data:/var/lib/postgresql/data 700:Z
+      - ./volumes/db/r4gmi/migrations:/docker-entrypoint-initdb.d/r4gmi:rw
+    env_file: *env_files
+    networks:
+      - r4gmi_net
+    labels:
+      caddy.layer4.:443.@db: "tls sni db.r4gmi.localhost"
+      caddy.layer4.:443.route: "@db"
+      caddy.layer4.:443.route.1_tls:
+      caddy.layer4.:443.route.2_proxy: "{{upstreams 5432}}"
+      caddy_2: db.r4gmi.localhost
+      caddy_2.tls: internal
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: rizilab-vault
+    restart: always
+    volumes:
+      - ./vault/logs:/vault/logs/:rw
+      - ./vault/data:/vault/data/:rw
+      - ./vault/config/config.prod.hcl:/vault/config/config.hcl:rw
+      - ./vault/file:/vault/file/:rw
+    cap_add:
+      - IPC_LOCK
+    entrypoint: vault server -log-level debug -log-format json  -config /vault/config/config.hcl
+    env_file: *env_files
+    networks:
+      - rizilab_security_net
+    labels:
+      caddy_5: vault.${RIZILAB_DOMAIN}
+      caddy_5.1_tls: "/etc/ssl/certs/certificate_vault_rizilab.pem /etc/ssl/certs/key_vault_rizilab.pem"
+      caddy_5.1_tls.client_auth.mode: "require_and_verify"
+      caddy_5.1_tls.client_auth.trusted_ca_cert_file: "/etc/ssl/certs/authenticated_origin_pull_ca.pem"
+      caddy_5.2_crowdsec:
+      caddy_5.3_reverse_proxy: "{{upstreams http 8200}}"
+
+  crowdsec:
+    env_file: *env_files
+    image: crowdsecurity/crowdsec:latest
+    container_name: rizilab-crowdsec
+    volumes:
+      - crowdsec-db:/var/lib/crowdsec/data/
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml
+      - caddy-logs:/var/log/caddy:ro
+    networks:
+      - rizilab_security_net
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges=true
+    labels:
+      caddy.3_crowdsec.1_api_url: "{{upstreams http 8080}}"
+      caddy.3_crowdsec.2_api_key: "{$$CROWDSEC_API_KEY}"
+      caddy.3_crowdsec.3_ticker_interval: "15s"
+
+volumes:
+  crowdsec-db:
+  caddy-logs:
+  caddy-data:
+  caddy-config:
+
+networks:
+  rizilab_security_net:
+    name: rizilab_security_net
+    external: true

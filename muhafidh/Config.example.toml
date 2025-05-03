@@ -1,0 +1,20 @@
+[storage_db]
+user = ""
+password = ""
+port = ""
+host = ""
+pool_size = 0
+db_name = ""
+
+[storage_db.tls]
+cert_path = ""
+key_path = ""
+ca_path = ""
+
+[storage_redis]
+user = ""
+
+[rpc]
+http_url = ""
+ws_url = ""
+api_key = ""

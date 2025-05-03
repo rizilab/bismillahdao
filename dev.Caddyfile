@@ -1,0 +1,41 @@
+{
+	debug
+	order crowdsec first
+	email admin@r4gmi.localhost
+	log {
+		format json
+		level DEBUG
+		output stderr
+	}
+	order rate_limit before basicauth
+	crowdsec {
+		api_url http://172.22.0.4:8080
+		api_key ff16409ee8b54814bb69657ec98fd695
+		ticker_interval 15s
+	}
+}
+:443 {
+	@api header Host api.r4gmi.localhost
+	@auth header Host auth.r4gmi.localhost
+	@keycloak header Host keycloak.r4gmi.localhost
+	@landing header Host r4gmi.localhost
+	tls internal
+	crowdsec
+	handle @landing {
+		reverse_proxy r4gmi-service-web:8181
+	}
+	handle @auth {
+		reverse_proxy r4gmi-service-web:8182
+	}
+	handle @api {
+		handle /v1/* {
+			reverse_proxy r4gmi-service-web:8183
+		}
+		handle /mpc/v1/* {
+			reverse_proxy r4gmi-service-web:8184
+		}
+	}
+	handle @keycloak {
+		reverse_proxy r4gmi-service-keycloak:8080
+	}
+}

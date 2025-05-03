@@ -1,0 +1,39 @@
+x-env-files: &env_files
+  - path: ./../../.env.dev
+    required: true
+  - path: ./../../.env.shared
+    required: true
+  - path: ./../../.env.local
+    required: false
+  - path: ./../../.env
+    required: false
+
+services:
+  bismillahdao-crowdsec:
+    env_file: *env_files
+    image: crowdsecurity/crowdsec:latest
+    container_name: bismillahdao-crowdsec
+    volumes:
+      - crowdsec-db:/var/lib/crowdsec/data/
+      - ./../../crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml
+      - caddy-logs:/var/log/caddy:ro
+    networks:
+      - bismillahdao_net
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges=true
+    labels:      
+      caddy.3_crowdsec.1_api_url: "{{upstreams http 8080}}"
+      caddy.3_crowdsec.2_api_key: "${CROWDSEC_API_KEY}"
+      caddy.3_crowdsec.3_ticker_interval: "15s"
+  
+  bismillahdao-keycloak:
+    build:
+      dockerfile: ./images/Dockerfile.keycloak
+      context: ./../../
+    container_name: bismillahdao-keycloak
+    command: start-dev
+    restart: unless-stopped
+    env_file: *env_files
+    networks:
+      - bismillahdao_net

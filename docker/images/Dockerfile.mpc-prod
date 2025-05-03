@@ -1,0 +1,49 @@
+# Start from the official rust image and install cargo-chef
+FROM clux/muslrust:stable AS chef
+USER root
+RUN cargo install cargo-chef
+WORKDIR /app
+
+# Plan the mpc build
+FROM chef AS planner
+COPY bismillahdao/web/mpc .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Build the mpc dependencies
+FROM chef AS mpc-builder 
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+COPY bismillahdao/web/mpc .
+# Build the single mpc binary that handles all endpoints
+RUN cargo build --release --target x86_64-unknown-linux-musl --bin r4gmi-mpc --features prod
+
+# Build the frontend projects using rollup
+FROM rust:1.86-alpine AS frontend-builder
+RUN apk add --no-cache nodejs npm python3 build-base musl-dev
+RUN rustup target add wasm32-unknown-unknown
+WORKDIR /app/bismillahdao/web/ui
+COPY bismillahdao/web/ui/package.json bismillahdao/web/ui/package-lock.json ./
+RUN npm install
+COPY bismillahdao/web/ui .
+RUN npm run prod
+
+# Use a minimal base image for the final build
+FROM alpine AS runtime
+RUN addgroup -S rizilab && adduser -S rizilab -G rizilab
+
+# Create required directories
+WORKDIR /app
+RUN mkdir -p /usr/local/share/r4gmi/dist
+RUN mkdir -p /usr/local/bin
+
+# Copy mpc binary
+COPY --from=mpc-builder /app/target/x86_64-unknown-linux-musl/release/r4gmi-mpc /usr/local/bin/
+
+
+USER rizilab
+
+# Use the entrypoint script to start the mpc
+COPY bismillahdao/docker/entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-mp.sh"]

@@ -1,0 +1,25 @@
+# This is the sshd server system-wide configuration file.  See
+# sshd_config(5) for more information.
+
+# This sshd was compiled with PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
+
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+Port 8822
+LogLevel INFO
+
+X11Forwarding yes
+PrintMotd no
+
+AcceptEnv LANG LC_*
+
+# override default of no subsystems
+Subsystem       sftp    /usr/lib/openssh/sftp-server
+
+
+PubkeyAuthentication yes
+PasswordAuthentication no
+PermitRootLogin no
+UsePAM yes
+TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pem

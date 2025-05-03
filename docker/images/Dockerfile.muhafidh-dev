@@ -1,0 +1,31 @@
+# Build the frontend using rollup
+FROM rust:1.82-bullseye AS base
+
+# install base packages
+RUN apt-get clean \
+    && apt-get update --fix-missing \
+    && apt-get install -y \
+    git \
+    curl \
+    gcc \
+    g++ \
+    build-essential \
+    wget \
+    curl \
+    python3 \
+    ccze
+
+# install justfile
+RUN cargo install just watchexec-cli
+
+WORKDIR /app
+COPY muhafidh /app/muhafidh
+COPY justfile /app/justfile
+
+# install backend dependencies
+WORKDIR /app/muhafidh,
+RUN cargo build
+
+CMD ["watchexec", "-i", "./**/target", "-w", "src", "-w", "config", "-e", "rs","--project-origin", ".", "-r", "just", "run"]
+
+# CMD ["just", "run"]  

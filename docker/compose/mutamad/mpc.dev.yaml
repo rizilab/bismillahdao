@@ -1,0 +1,30 @@
+x-env-files: &env_files
+  - path: ./../../.env.dev
+    required: true
+  - path: ./../../.env.shared
+    required: true
+  - path: ./../../.env.local
+    required: false
+  - path: ./../../.env
+    required: false
+
+services:
+  r4gmi-service-mpc:
+    build:
+      dockerfile: ./../../images/Dockerfile.mpc-dev
+      context: ./../../../web
+    container_name: r4gmi-services-mpc
+    develop:
+      watch:
+        - action: sync
+          path: ../../../web/mpc
+          target: /app/mpc
+        - action: sync
+          path: ../../../web/mpc/Cargo.toml
+          target: /app/mpc
+    restart: 'no'
+    env_file: *env_files
+    depends_on:
+      - r4gmi-service-db
+    networks:
+      - r4gmi_services_net 

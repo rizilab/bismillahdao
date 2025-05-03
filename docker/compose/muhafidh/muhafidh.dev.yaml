@@ -1,0 +1,43 @@
+x-env-files: &env_files
+  - path: ./../../.env.dev
+    required: true
+  - path: ./../../.env.shared
+    required: true
+  - path: ./../../.env.local
+    required: false
+  - path: ./../../.env
+    required: false
+
+services:
+  bismillahdao-muhafidh:
+    build:
+      dockerfile: ./docker/images/Dockerfile.muhafidh-dev
+      context: ./../../../
+    container_name: bismillahdao-muhafidh
+    develop:
+      watch:
+        - action: sync
+          path: ./../../../muhafidh/src
+          target: /app/muhafidh/src
+          ignore:
+            - ./../../../muhafidh/target/
+        - action: sync
+          path: ./../../../muhafidh/Cargo.toml
+          target: /app/muhafidh/Cargo.toml
+        - action: sync
+          path: ./../../../muhafidh/config/session.yaml
+          target: /app/muhafidh/config/session.yaml
+        - action: sync
+          path: ./../../../muhafidh/config/curl.txt
+          target: /app/muhafidh/config/curl.txt
+    volumes:
+      - muhafidh_cargo_cache:/usr/local/cargo/registry
+      - muhafidh_target_cache:/app/muhafidh/target
+    restart: unless-stopped
+    env_file: *env_files
+    networks:
+      - bismillahdao_net
+
+volumes:
+  muhafidh_cargo_cache:
+  muhafidh_target_cache:

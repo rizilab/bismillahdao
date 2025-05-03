@@ -1,0 +1,36 @@
+# Start from the official rust image and install cargo-chef
+FROM clux/muslrust:stable AS chef
+USER root
+RUN cargo install cargo-chef
+WORKDIR /app
+
+# Plan the build. If this has already been done, no need to re-do it
+FROM chef AS planner
+COPY backend .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Build the dependencies
+FROM chef AS builder 
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+COPY backend .
+RUN cargo build --release --target x86_64-unknown-linux-musl --bin rizilab-landing --features prod
+
+# Build the frontend using rollup
+FROM rust:1.82.0-alpine AS frontend-builder
+RUN apk add --no-cache nodejs npm python3 build-base musl-dev
+RUN rustup target add wasm32-unknown-unknown
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm install
+COPY frontend .
+RUN npm run build
+
+# Use a minimal base image for the final build
+FROM alpine AS runtime
+RUN addgroup -S rizilab && adduser -S rizilab -G rizilab
+WORKDIR /app
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/rizilab-landing /usr/local/bin/rizilab-landing
+COPY --from=frontend-builder /app/frontend/dist /usr/local/share/rizilab-landing/dist
+USER rizilab
+CMD ["/usr/local/bin/rizilab-landing"]

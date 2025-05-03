@@ -1,0 +1,39 @@
+x-env-files: &env_files
+  - path: ../../.env.dev
+    required: true
+  - path: ../../.env.shared
+    required: true
+  - path: ../../.env.local
+    required: false
+  - path: ../../.env
+    required: false
+  
+services:
+  bismillahdao-web:
+    build:
+      dockerfile: ./../../docker/images/Dockerfile.web-dev
+      context: ./../../../web
+    container_name: bismillahdao-web
+    develop:
+      watch:
+        - action: sync
+          path: ../../../web/ui
+          target: /app/ui
+          ignore:
+            - ../../../web/ui/node_modules/
+        - action: sync
+          path: ../../../web/ui/package.json
+          target: /app/ui
+        - action: sync
+          path: ../../../web/backend
+          target: /app/backend
+        - action: sync
+          path: ../../../web/backend/Cargo.toml
+          target: /app/backend
+    restart: 'no'
+    env_file: *env_files
+    depends_on:
+      - bismillahdao-db
+      - bismillahdao-timescaledb
+    networks:
+      - bismillahdao_net

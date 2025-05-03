@@ -1,0 +1,78 @@
+x-env-files: &env_files
+  - path: ./../../.env.dev
+    required: true
+  - path: ./../../.env.shared
+    required: true
+  - path: ./../../.env.local
+    required: false
+  - path: ./../../.env
+    required: false
+
+services:
+  bismillahdao-postgres-certs:
+    build:
+      dockerfile: ./docker/images/Dockerfile.postgresql-certs
+      context: ./../../../
+    container_name: bismillahdao-postgres-certs
+    volumes:
+      - ./../../volumes/timescaledb/certs:/certs-output
+    networks:
+      - bismillahdao_net
+
+  bismillahdao-timescaledb:
+    build:
+      dockerfile: ./docker/images/Dockerfile.postgresql
+      context: ./../../../
+    container_name: bismillahdao-timescaledb
+    restart: on-failure
+    volumes:
+      - ./../../volumes/timescaledb/data:/var/lib/postgresql/data
+      - ./../../volumes/timescaledb/migrations/001_extensions.sql:/docker-entrypoint-initdb.d/001_extensions.sql:ro
+      - ./../../volumes/timescaledb/migrations/twitter_monitor_migrations.sql:/docker-entrypoint-initdb.d/002_twitter_monitor.sql:ro
+    env_file: *env_files
+    environment:
+      - POSTGRES_DB=r4gmi
+      - POSTGRES_USER=r4gmi
+      - PGUSER=r4gmi
+      - PGDATABASE=r4gmi
+      - POSTGRES_PASSWORD=r4gmi
+      - POSTGRES_SHARED_BUFFERS=1536MB
+      - POSTGRES_EFFECTIVE_CACHE_SIZE=3072MB
+      - POSTGRES_WORK_MEM=20MB
+      - POSTGRES_MAINTENANCE_WORK_MEM=256MB
+      - POSTGRES_MAX_CONNECTIONS=50
+      - TS_TUNE_MAX_BG_WORKERS=16
+      - POSTGRES_MAX_PARALLEL_WORKERS=4
+      - POSTGRES_MAX_WORKER_PROCESSES=16
+      - POSTGRES_SYNCHRONOUS_COMMIT="off"
+      - POSTGRES_MAX_LOCKS_PER_TRANSACTION=128
+    ports:
+      - "0.0.0.0:5433:5432"
+    networks:
+      - bismillahdao_net
+  
+  bismillahdao-db:
+    image: postgres:17.2-bullseye
+    container_name: bismillahdao-db
+    restart: always
+    volumes:
+      - ./../../volumes/db/data:/var/lib/postgresql/data
+      - ./../../volumes/db/migrations:/docker-entrypoint-initdb.d/r4gmi-web:rw
+    env_file: *env_files
+    environment:
+      - POSTGRES_DB=r4gmi_db
+      - POSTGRES_USER=r4gmi
+      - PGUSER=r4gmi
+      - POSTGRES_PASSWORD=r4gmi
+    ports:
+      - "5432:5432"
+    networks:
+      - bismillahdao_net
+  
+  bismillahdao-redis:
+    image: redis:7.4.1-bookworm
+    container_name: bismillahdao-redis
+    restart: always
+    env_file: *env_files
+    networks:
+      - bismillahdao_net

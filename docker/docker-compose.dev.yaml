@@ -1,0 +1,88 @@
+x-env-files: &env_files
+  - path: .env.dev
+    required: true
+  - path: .env.shared
+    required: true
+  - path: .env.local
+    required: false
+  - path: .env
+    required: false
+
+x-logging: &logging
+  driver: json-file
+  options:
+    # Used by promtail to produce labels for Loki
+    tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+
+include:
+  - ./compose/database/database.dev.yaml
+  - ./compose/infrastructure/infra.dev.yaml
+  - ./compose/mutamad/web.dev.yaml
+  # - ./compose/mutamad/mpc.dev.yaml
+  - ./compose/twitter-monitor/twitter-monitor.dev.yaml
+  - ./compose/muhafidh/muhafidh.dev.yaml
+
+services:
+  bismillahdao-caddy:
+    build:
+      dockerfile: ./images/Dockerfile.caddy
+      context: .
+    container_name: bismillahdao-caddy
+    restart: unless-stopped
+
+    logging: *logging
+    command: ["caddy", "docker-proxy"]
+    ports:
+      - "8081:80"    # HTTP port
+      - "4444:443"   # HTTPS port
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    env_file: *env_files
+    networks:
+      - bismillahdao_net
+    labels:
+      caddy.1_order: "crowdsec first"
+      caddy.1_debug:
+      caddy.2_log.1_format: "json"
+      caddy.2_log.2_level: "DEBUG"
+      caddy.2_log.3_output: "stderr"
+      caddy.2_order: "rate_limit before basicauth"
+      caddy.2_email: "admin@r4gmi.localhost"
+      caddy.3_servers:
+      caddy.3_servers.trusted_proxies: "cloudflare"
+      caddy_5: ":443"
+      caddy_5.@api: "header Host api.r4gmi.localhost"
+      caddy_5.@auth: "header Host auth.r4gmi.localhost"
+      caddy_5.@landing: "header Host r4gmi.localhost"
+      caddy_5.@keycloak: "header Host keycloak.r4gmi.localhost"
+      caddy_5.1_tls: "internal"
+      caddy_5.2_crowdsec:
+      caddy_5.3_handle: "@landing"
+      caddy_5.3_handle.reverse_proxy: bismillahdao-web:8181
+      caddy_5.4_handle: "@auth"
+      caddy_5.4_handle.reverse_proxy: bismillahdao-web:8182
+      caddy_5.5_handle: "@api"
+      caddy_5.5_handle.1_handle: "/v1/*"
+      caddy_5.5_handle.1_handle.reverse_proxy: bismillahdao-web:8183
+      caddy_5.5_handle.2_handle: "/mpc/v1/*"
+      caddy_5.5_handle.2_handle.reverse_proxy: bismillahdao-mpc:8184
+      caddy_5.6_handle: "@keycloak"
+      caddy_5.6_handle.reverse_proxy: bismillahdao-keycloak:8080
+    links:
+      - bismillahdao-web
+      - bismillahdao-keycloak
+
+volumes:
+  crowdsec-db:
+  caddy-logs:
+  caddy-data:
+  caddy-config:
+
+networks:
+  bismillahdao_net:
+    name: bismillahdao_net
+    external: true

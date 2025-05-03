@@ -1,0 +1,52 @@
+# Build the frontend using rollup
+FROM rust:1.86-bullseye AS base
+
+RUN curl -fsSL https://apt.cli.rs/pubkey.asc | tee -a /usr/share/keyrings/rust-tools.asc
+RUN curl -fsSL https://apt.cli.rs/rust-tools.list | tee /etc/apt/sources.list.d/rust-tools.list
+RUN apt update
+
+# install base packages
+RUN apt-get clean \
+    && apt-get update --fix-missing \
+    && apt-get install -y \
+    git \
+    curl \
+    gcc \
+    g++ \
+    build-essential \
+    wget \
+    python3 \
+    ccze \
+    watchexec-cli \
+    && curl -fsSL https://deb.nodesource.com/setup_23.x | bash \
+    && apt-get install -y nodejs 
+RUN rustup target add wasm32-unknown-unknown
+
+# install justfile
+RUN cargo install just
+
+WORKDIR /app
+COPY mpc /app/mpc
+COPY justfile /app/justfile
+
+# Install mpc dependencies
+WORKDIR /app/mpc
+RUN cargo build --features dev
+
+# Create a non-root user
+RUN groupadd -r rizilab && useradd -r -g rizilab -d /app rizilab
+
+WORKDIR /app
+
+# Change ownership of the application files
+RUN chown -R rizilab:rizilab /app
+RUN chown -R rizilab:rizilab /usr/local/cargo
+
+FROM base
+
+ENV XDG_CACHE_HOME=/app/.cache
+USER rizilab
+
+# Start development with watchexec for hot reloading
+# Watch the UI (auth & landing) and mpc source files
+CMD ["watchexec", "-i", "./**/target", "-w", "mpc/src", "-e", "rs,toml","--project-origin", ".", "-r", "just", "mpc-dev"]
