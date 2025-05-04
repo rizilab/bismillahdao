@@ -18,6 +18,7 @@ use tracing::info;
 use crate::constants::PUMP_FUN_PROGRAM_ID;
 use crate::engine::raqib::Raqib;
 use crate::processor::pumpfun::PfProgramInstructionProcessor;
+
 pub fn make_pumpfun_subscriber_pipeline(raqib: Raqib) -> Result<Pipeline> {
   let ws_url =
     dotenvy::var("PUMPFUN_MONITOR_RPC_NEW_TOKEN_WSS").expect("PUMPFUN_MONITOR_RPC_NEW_TOKEN_WSS not found in the .env");

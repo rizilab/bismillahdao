@@ -1,21 +1,21 @@
 default:
   @just --list
 
-# Run the PumpFun token monitor with WebSocket (default)
-monitor:
-  cargo run --release --bin monitor
+# Run the PumpFun token raqib with WebSocket (default)
+run-raqib:
+  cargo run --release --bin raqib
 
-# Build the PumpFun monitor
-build:
-  cargo build
+# Build the PumpFun raqib
+build-raqib:
+  cargo build --bin raqib
 
 # Build a release version
-release:
-  cargo build --release
+release-raqib:
+  cargo build --release --bin raqib
 
 # Run tests
-test:
-  cargo test
+test-raqib:
+  cargo test --bin raqib
 
 # Clean the build artifacts
 clean:

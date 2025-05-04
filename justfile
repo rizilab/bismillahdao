@@ -74,3 +74,6 @@ logs container:
 
 shell container:
   docker compose -f docker/docker-compose.dev.yaml exec {{container}} sh
+
+run-raqib:
+  just muhafidh/run-raqib

@@ -80,7 +80,7 @@ native-tls = { version = "0.2", features = ["vendored"] }
 default = ["prod"]
 dev = []
 prod = []
-
+deep-trace = []
 [[bin]]
 name = "raqib"
 path = "src/bin/raqib.rs"

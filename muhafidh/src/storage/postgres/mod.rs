@@ -29,10 +29,10 @@ pub trait PostgresStorage {
   where
     Self: Sized;
   async fn health_check(&self) -> Result<()>;
-  async fn initialize(&mut self) -> Result<()>;
+  async fn initialize(&self) -> Result<()>;
 }
 
-pub type PostgresPool = Arc<Pool<PostgresConnectionManager<MakeTlsConnector>>>;
+pub type PostgresPool = Pool<PostgresConnectionManager<MakeTlsConnector>>;
 
 #[derive(Debug, Clone)]
 pub struct PostgresClient {
@@ -103,7 +103,7 @@ pub async fn make_postgres_client(
     err_with_loc!(PostgresClientError::PoolError(bb8::RunError::User(e)))
   })?;
 
-  info!("{}::postgres_client::connection_established", engine_name);
+  info!("postgres::connection_established");
 
-  Ok(Arc::new(PostgresClient { pool: Arc::new(pool) }))
+  Ok(Arc::new(PostgresClient { pool }))
 }

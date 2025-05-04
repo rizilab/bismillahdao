@@ -1,5 +1,6 @@
 pub mod config;
 pub mod postgres;
+pub mod redis;
 
 pub use anyhow::anyhow;
 pub use anyhow::Context;
@@ -31,14 +32,20 @@ where
   ) -> std::fmt::Result {
     // To get the message, we need to format the fields with a special visitor
     let metadata = event.metadata();
-
+    let file = metadata.file().unwrap_or("unknown");
+    let line = metadata.line().unwrap_or(0);
+    
+    if file == "unknown" && !cfg!(feature = "deep-trace") {
+        return Ok(());
+    }
+    
     write!(
       writer,
       "{} {}::{}::{}::",
       metadata.level(),
       self.engine_name,
-      metadata.file().unwrap_or("unknown"),
-      metadata.line().unwrap_or(0),
+      file,
+      line,
     )?;
 
     // Format the actual message
@@ -49,8 +56,19 @@ where
 }
 
 pub fn setup_tracing(engine_name: &str) {
-  // Create an EnvFilter that reads from RUST_LOG with INFO as default
-  let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,"));
+  let env_filter = if cfg!(feature = "deep-trace") {
+    
+    tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info".into())
+} else {
+
+    let base_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info".into());
+    
+    base_filter
+        .add_directive("muhafidh=info".parse().unwrap())
+        .add_directive("carbon_core=error".parse().unwrap())
+};
 
   tracing_subscriber::fmt()
     .with_env_filter(env_filter)

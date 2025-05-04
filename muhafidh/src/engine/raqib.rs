@@ -21,13 +21,13 @@ impl Raqib {
     info!("Starting Raqib (رقيب): The Watchful Guardian");
 
     setup_tracing("raqib");
-    info!("raqib::run::setup_tracing");
+    info!("setup_tracing");
 
     let config = load_config("Config.toml")?;
-    info!("raqib::run::config loaded");
+    info!("config loaded");
 
     let db_engine = make_storage_engine("raqib", &config).await?;
-    info!("raqib::run::db_engine::created");
+    info!("db_engine::created");
 
     let raqib = Raqib { config, db: Arc::new(db_engine) };
 

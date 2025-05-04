@@ -74,5 +74,7 @@ services:
     container_name: bismillahdao-redis
     restart: always
     env_file: *env_files
+    ports:
+      - "6379:6379"
     networks:
       - bismillahdao_net
