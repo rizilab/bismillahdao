@@ -13,7 +13,6 @@ use native_tls::Identity;
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use tokio_postgres::Config;
-use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -22,10 +21,11 @@ use crate::config::StoragePostgresConfig;
 use crate::err_with_loc;
 use crate::error::PostgresClientError;
 use crate::error::Result;
+use crate::storage::postgres::db::TokenMetadataDb;
 
 #[async_trait::async_trait]
 pub trait PostgresStorage {
-  async fn new(config: &StoragePostgresConfig) -> Self
+  fn new(pg_pool: Arc<PostgresPool>) -> Self
   where
     Self: Sized;
   async fn health_check(&self) -> Result<()>;
@@ -36,7 +36,8 @@ pub type PostgresPool = Pool<PostgresConnectionManager<MakeTlsConnector>>;
 
 #[derive(Debug, Clone)]
 pub struct PostgresClient {
-  pub pool: PostgresPool,
+  pub pool: Arc<PostgresPool>,
+  pub db: Arc<TokenMetadataDb>,
 }
 
 // this file is for normal postgres db
@@ -103,7 +104,11 @@ pub async fn make_postgres_client(
     err_with_loc!(PostgresClientError::PoolError(bb8::RunError::User(e)))
   })?;
 
-  info!("postgres::connection_established");
+  let pool = Arc::new(pool);
 
-  Ok(Arc::new(PostgresClient { pool }))
+  info!("postgres::connection_established");
+  
+  let db = Arc::new(TokenMetadataDb::new(pool.clone()));
+
+  Ok(Arc::new(PostgresClient { pool, db }))
 }

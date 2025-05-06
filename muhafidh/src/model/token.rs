@@ -1,5 +1,5 @@
-
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenMetadata {
     pub mint: solana_pubkey::Pubkey,
     pub name: String,

@@ -1,4 +1,3 @@
-use std::env;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -12,8 +11,6 @@ use solana_client::rpc_config::RpcBlockSubscribeConfig;
 use solana_client::rpc_config::RpcBlockSubscribeFilter;
 use solana_sdk::commitment_config::CommitmentConfig;
 use tracing::debug;
-use tracing::error;
-use tracing::info;
 
 use crate::constants::PUMP_FUN_PROGRAM_ID;
 use crate::engine::raqib::Raqib;
@@ -40,7 +37,7 @@ pub fn make_pumpfun_subscriber_pipeline(raqib: Raqib) -> Result<Pipeline> {
     .datasource(rpc_program_subscribe)
     .metrics(Arc::new(LogMetrics::new()))
     .metrics_flush_interval(3)
-    .instruction(PumpfunDecoder, PfProgramInstructionProcessor)
+    .instruction(PumpfunDecoder, PfProgramInstructionProcessor::new(raqib.token_handler.clone()))
     .shutdown_strategy(ShutdownStrategy::Immediate)
     .build()?;
 

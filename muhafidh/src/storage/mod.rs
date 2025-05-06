@@ -12,8 +12,9 @@ use tracing::instrument;
 
 use crate::config::Config;
 use crate::storage::postgres::make_postgres_client;
+use crate::storage::postgres::db::TokenMetadataDb;
 use crate::storage::redis::make_redis_client;
-
+use crate::storage::postgres::PostgresStorage;
 #[derive(Debug, Clone)]
 pub struct StorageEngine {
   pub postgres: Arc<PostgresClient>,
@@ -22,6 +23,13 @@ pub struct StorageEngine {
 
 impl StorageEngine {
   pub fn new(postgres: Arc<PostgresClient>, redis: Arc<RedisClient>) -> Self { Self { postgres, redis } }
+  
+  pub async fn migrate(&self) -> Result<()> {
+    let pool = self.postgres.pool.clone();
+    let token_metadata_db = TokenMetadataDb::new(pool);
+    token_metadata_db.initialize().await?;
+    Ok(())
+  }
 }
 
 #[instrument(level = "info", skip(config))]

@@ -18,3 +18,58 @@
 //         }
 //     }
 // }
+use serde_json;
+use crate::Result;
+use crate::storage::redis::RedisPool;
+use bb8_redis::redis;
+use crate::err_with_loc;
+use crate::RedisClientError;
+use crate::model::token::TokenMetadata;
+use bb8_redis::RedisConnectionManager;
+use bb8::PooledConnection;
+use crate::storage::redis::RedisStorage;
+use tracing::info;
+use tracing::error;
+
+#[derive(Debug, Clone)]
+pub struct TokenMetadataQueue {
+  pub pool: RedisPool,
+}
+
+#[async_trait::async_trait]
+impl RedisStorage for TokenMetadataQueue {
+  fn new(pool: RedisPool) -> Self {
+    Self { pool }
+  }
+  
+  async fn get_connection(&self) -> Result<PooledConnection<'_, RedisConnectionManager>> {
+    self.pool
+        .get()
+        .await
+        .map_err(|e| {
+            error!("failed_to_get_redis_connection: {}", e);
+            err_with_loc!(RedisClientError::GetConnectionError(e))
+          })
+  }
+}
+
+impl TokenMetadataQueue {
+  pub async fn publish_new_token_metadata(&self, token: &TokenMetadata) -> Result<()> {
+    let mut conn = self.get_connection().await?;
+    
+    let token_json = serde_json::to_string(token)?;
+    
+    redis::cmd("PUBLISH")
+        .arg("new_token_created")
+        .arg(token_json)
+        .query_async::<()>(&mut *conn)
+        .await
+        .map_err(|e| {
+            error!("publish_new_token_created_failed: {}", e);
+            err_with_loc!(RedisClientError::RedisError(e))
+        })?;
+        
+    info!("publish_new_token_created::{}::{}", token.name, token.mint);
+    Ok(())
+}
+}

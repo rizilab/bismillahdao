@@ -1,12 +1,18 @@
 pub mod config;
 pub mod postgres;
 pub mod redis;
+pub mod engine;
+pub mod handler;
 
 pub use anyhow::anyhow;
 pub use anyhow::Context;
 pub use anyhow::Error;
 pub use anyhow::Result;
 pub use postgres::PostgresClientError;
+pub use engine::EngineError;
+pub use redis::RedisClientError;
+pub use handler::HandlerError;
+
 use tracing::Event;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::format::Writer;
@@ -58,11 +64,11 @@ where
 pub fn setup_tracing(engine_name: &str) {
   let env_filter = if cfg!(feature = "deep-trace") {
     
-    tracing_subscriber::EnvFilter::try_from_default_env()
+    EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "info".into())
 } else {
 
-    let base_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+    let base_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "info".into());
     
     base_filter

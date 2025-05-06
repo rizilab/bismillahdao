@@ -9,11 +9,8 @@
 //
 //  In the name of Allah, the Most Gracious, the Most Merciful.
 // ─────────────────────────────────────────────────────────────────────────────
-use muhafidh::config::load_config;
 use muhafidh::engine::raqib::Raqib;
 use muhafidh::error::Result;
-use muhafidh::storage::StorageEngine;
-use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,4 +1,3 @@
-pub mod cex;
 pub mod config;
 pub mod constants;
 pub mod crawler;
@@ -9,6 +8,7 @@ pub mod model;
 pub mod processor;
 pub mod storage;
 pub mod subscriber;
+pub mod handler;
 
 pub use engine::*;
 pub use error::*;

@@ -9,3 +9,11 @@
 //
 //  In the name of Allah, the Most Gracious, the Most Merciful.
 // ─────────────────────────────────────────────────────────────────────────────
+use muhafidh::engine::siraaj::Siraaj;
+use muhafidh::error::Result;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+  Siraaj::run().await?;
+  Ok(())
+}

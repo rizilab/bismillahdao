@@ -10,8 +10,11 @@
 //  In the name of Allah, the Most Gracious, the Most Merciful.
 // ─────────────────────────────────────────────────────────────────────────────
 
+use muhafidh::engine::baseer::Baseer;
+use muhafidh::error::Result;
+
 #[tokio::main]
 async fn main() -> Result<()> {
-  muhafidh::baseer::run().await?;
+  Baseer::run().await?;
   Ok(())
 }

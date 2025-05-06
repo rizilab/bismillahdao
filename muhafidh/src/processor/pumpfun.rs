@@ -8,12 +8,19 @@ use carbon_core::processor::Processor;
 use carbon_pumpfun_decoder::instructions::create::Create;
 use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
 use tracing::error;
-use tracing::info;
 
-pub struct PfProgramInstructionProcessor;
-// {
-//     creation_handler: Arc<TokenCreationHandler>,
-// }
+use crate::handler::token::metadata::TokenHandlerMetadataOperator;
+
+pub struct PfProgramInstructionProcessor
+{
+    token_handler: Arc<TokenHandlerMetadataOperator>,
+}
+
+impl PfProgramInstructionProcessor {
+    pub fn new(token_handler: Arc<TokenHandlerMetadataOperator>) -> Self {
+        Self { token_handler }
+    }
+}
 
 #[async_trait::async_trait]
 impl Processor for PfProgramInstructionProcessor {
@@ -30,7 +37,20 @@ impl Processor for PfProgramInstructionProcessor {
         // process_account_meta(account_meta);
         let accounts = Create::arrange_accounts(&instruction.accounts);
         if let Some(accounts) = accounts {
-          info!("Created: {:?}", accounts);
+          // Get block time
+          let block_time = meta.transaction_metadata.block_time
+              .map(|t| t as u64)
+              .unwrap_or_else(|| {
+                  std::time::SystemTime::now()
+                      .duration_since(std::time::UNIX_EPOCH)
+                      .unwrap_or_default()
+                      .as_secs()
+              });
+          
+          // Send to handler
+          if let Err(e) = self.token_handler.store_token(&account_meta, &accounts, block_time).await {
+              error!("store_token_failed::{}: {}", accounts.mint, e);
+          }
         }
       },
       _ => {},
