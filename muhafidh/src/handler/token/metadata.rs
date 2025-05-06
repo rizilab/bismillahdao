@@ -27,7 +27,7 @@ impl TokenHandlerMetadata {
 
     async fn store_token(&self, token: TokenMetadata) -> Result<()> {
         // First check Redis cache
-        let cached_token = self.db.redis.kv.get_token_metadata(&token.mint.to_string()).await?;
+        let cached_token = self.db.redis.kv.get::<TokenMetadata>(&token.mint.to_string()).await?;
         
         // Skip if we already have this token with the same data
         if let Some(existing) = cached_token {
@@ -41,7 +41,7 @@ impl TokenHandlerMetadata {
         self.db.postgres.db.insert_token_metadata(&token).await?;
         
         // Update Redis cache
-        self.db.redis.kv.set_token_metadata(&token.mint.to_string(), &token).await?;
+        self.db.redis.kv.set(&token.mint.to_string(), &token).await?;
         
         // Publish event for cross-service communication
         self.db.redis.queue.publish_new_token_metadata(&token).await?;
