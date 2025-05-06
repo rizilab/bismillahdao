@@ -46,7 +46,7 @@ impl TokenHandlerMetadata {
         // Publish event for cross-service communication
         self.db.redis.queue.publish_new_token_metadata(&token).await?;
         
-        info!("Stored new token: {} ({})", token.name, token.mint);
+        info!("stored_new_token_metadata::{}::{}", token.mint, token.creator);
         Ok(())
     }
 }
@@ -60,7 +60,7 @@ async fn run_token_handler_metadata(mut token_creation_metadata: TokenHandlerMet
                 match msg {
                     TokenHandler::StoreToken { token_metadata } => {
                         if let Err(e) = token_creation_metadata.store_token(token_metadata).await {
-                            error!("Failed to store token: {}", e);
+                            error!("store_token_metadata_failed:{}", e);
                         }
                     },
                     // Only handle store token messages
@@ -117,10 +117,13 @@ impl TokenHandlerMetadataOperator {
             0,     // all_time_high_price
             block_time // all_time_high_price_at
         );
-        
+        debug!("store_token_metadata::{}::{}", token_metadata.mint.clone(), token_metadata.creator.clone());
         // Use try_send for backpressure handling
         match self.sender.try_send(TokenHandler::StoreToken { token_metadata }) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                debug!("sending_token_handler_metadata_success");
+                Ok(())
+            },
             Err(e) => {
                 error!("send_token_handler_failed: {}", e);
                 Err(err_with_loc!(HandlerError::SendTokenHandlerError(format!("send_token_handler_failed:{}", e))))

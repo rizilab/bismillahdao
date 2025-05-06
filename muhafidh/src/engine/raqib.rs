@@ -30,7 +30,8 @@ impl Raqib {
     info!("setup_tracing");
 
     let config = load_config("Config.toml")?;
-    info!("config loaded");
+    info!("config_loaded::postgres:: {}:{}/{}", config.storage_postgres.host, config.storage_postgres.port, config.storage_postgres.db_name);
+    info!("config_loaded::redis:: {}:{}", config.storage_redis.host, config.storage_redis.port);
 
     let db_engine = Arc::new(make_storage_engine("raqib", &config).await?);
     info!("db_engine::created");
@@ -38,7 +39,9 @@ impl Raqib {
     let shutdown_signal = ShutdownSignal::new();
     
     db_engine.postgres.db.health_check().await?;
+    info!("postgres::health_check::ok");
     db_engine.postgres.db.initialize().await?;
+    info!("postgres::initialize::ok");
 
     let token_handler = Arc::new(TokenHandlerMetadataOperator::new(
         db_engine.clone(), shutdown_signal.clone()));

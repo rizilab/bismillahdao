@@ -101,7 +101,7 @@ impl PostgresStorage for TokenMetadataDb {
     async fn health_check(&self) -> Result<()> {
         let conn = self.pool.get().await.map_err(|e| {
             error!("failed_to_get_client_pool_connection: {}", e);
-            err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_get_client_pool_connection: {}", e)))
+            err_with_loc!(PostgresClientError::PoolError(e))
           })?;
         
         conn.execute("SELECT 1", &[]).await.map_err(|e| {
