@@ -1,0 +1,13 @@
+backend-prod:
+    just ui/prod
+    just backend/prod
+
+backend-dev:
+    just ui/dev
+    just backend/dev
+
+mpc-dev:
+    just mpc/dev
+
+mpc-prod:
+    just mpc/prod
