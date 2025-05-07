@@ -8,34 +8,29 @@ use crate::redis::RedisClientError;
 use bb8_redis::redis;
 use bb8_redis::RedisConnectionManager;
 use bb8::PooledConnection;
-use crate::storage::redis::RedisStorage;
 
 use tracing::error;
 use tracing::debug;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TokenMetadataKv {
   pub pool: RedisPool,
 }
 
-#[async_trait::async_trait]
-impl RedisStorage for TokenMetadataKv {
-  fn new(pool: RedisPool) -> Self {
-    Self { pool }
-  }
-  
-  async fn get_connection(&self) -> Result<PooledConnection<'_, RedisConnectionManager>> {
-    self.pool
-        .get()
-        .await
-        .map_err(|e| {
-            error!("failed_to_get_redis_connection: {}", e);
-            err_with_loc!(RedisClientError::GetConnectionError(e))
-          })
-  }
-}
-
 impl TokenMetadataKv {
+    pub fn new(pool: RedisPool) -> Self {
+        Self { pool }
+    }
+    
+    pub async fn get_connection(&self) -> Result<PooledConnection<'_, RedisConnectionManager>> {
+        self.pool
+            .get()
+            .await
+            .map_err(|e| {
+                error!("failed_to_get_redis_connection: {}", e);
+                err_with_loc!(RedisClientError::GetConnectionError(e))
+                })
+    }
   pub async fn get<T: DeserializeOwned + Send>(
     &self,
     key: &str,

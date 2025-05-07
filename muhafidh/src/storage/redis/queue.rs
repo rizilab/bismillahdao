@@ -7,33 +7,34 @@ use crate::err_with_loc;
 use crate::RedisClientError;
 use bb8_redis::RedisConnectionManager;
 use bb8::PooledConnection;
-use crate::storage::redis::RedisStorage;
+use redis::aio::PubSub;
 use tracing::info;
+use tracing::debug;
 use tracing::error;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TokenMetadataQueue {
   pub pool: RedisPool,
-}
-
-#[async_trait::async_trait]
-impl RedisStorage for TokenMetadataQueue {
-  fn new(pool: RedisPool) -> Self {
-    Self { pool }
-  }
-  
-  async fn get_connection(&self) -> Result<PooledConnection<'_, RedisConnectionManager>> {
-    self.pool
-        .get()
-        .await
-        .map_err(|e| {
-            error!("failed_to_get_redis_connection: {}", e);
-            err_with_loc!(RedisClientError::GetConnectionError(e))
-          })
-  }
+  pub pubsub: Arc<RwLock<PubSub>>,
 }
 
 impl TokenMetadataQueue {
+    pub fn new(pool: RedisPool, pubsub: Arc<RwLock<PubSub>>) -> Self {
+        Self { pool, pubsub }
+      }
+      
+     pub async fn get_connection(&self) -> Result<PooledConnection<'_, RedisConnectionManager>> {
+        self.pool
+            .get()
+            .await
+            .map_err(|e| {
+                error!("failed_to_get_redis_connection: {}", e);
+                err_with_loc!(RedisClientError::GetConnectionError(e))
+              })
+      }
+        
   pub async fn publish<T: Serialize + Send>(&self, key: &str, value: &T) -> Result<()> {
     let mut conn = self.get_connection().await?;
     
@@ -49,7 +50,17 @@ impl TokenMetadataQueue {
             err_with_loc!(RedisClientError::RedisError(e))
         })?;
         
-    info!("redis_publish_done::{}", key);
+    debug!("redis_publish_done::{}", key);
     Ok(())
-}
+  }
+
+//   pub async fn subscribe(&self, key: &str) -> Result<()> {
+//     let mut conn = self.pubsub;
+//     conn.subscribe(key).await?;
+    
+//     let msg_stream = conn.on_message();
+
+    
+//   }
+
 }

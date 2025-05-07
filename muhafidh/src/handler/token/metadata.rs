@@ -9,7 +9,7 @@ use tracing::{info, error, debug};
 use crate::err_with_loc;
 use crate::error::HandlerError;
 use crate::Result;
-
+use crate::storage::redis::model::NewTokenCache;
 struct TokenHandlerMetadata {
     receiver: mpsc::Receiver<TokenHandler>,
     db: Arc<StorageEngine>,
@@ -44,9 +44,10 @@ impl TokenHandlerMetadata {
         self.db.redis.kv.set(&token.mint.to_string(), &token).await?;
         
         // Publish event for cross-service communication
-        self.db.redis.queue.publish("new_token_created", &token).await?;
+        let new_token_cache = NewTokenCache::from(token.clone());
+        self.db.redis.queue.publish("new_token_created", &new_token_cache).await?;
         
-        info!("stored_new_token_metadata::{}::{}", token.mint, token.creator);
+        info!("stored_new_token_metadata::<{}>::<{}>", token.mint, token.creator);
         Ok(())
     }
 }

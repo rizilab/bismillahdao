@@ -15,7 +15,7 @@ use crate::handler::token::TokenHandlerMetadataOperator;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::error::EngineError;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Raqib {
   pub config: Config,
   pub db:     Arc<StorageEngine>,
@@ -30,8 +30,6 @@ impl Raqib {
     info!("setup_tracing");
 
     let config = load_config("Config.toml")?;
-    info!("config_loaded::postgres:: {}:{}/{}", config.storage_postgres.host, config.storage_postgres.port, config.storage_postgres.db_name);
-    info!("config_loaded::redis:: {}:{}", config.storage_redis.host, config.storage_redis.port);
 
     let db_engine = Arc::new(make_storage_engine("raqib", &config).await?);
     info!("db_engine::created");

@@ -1,6 +1,7 @@
 pub mod db;
 pub mod graph;
 pub mod time_series;
+pub mod model;
 
 use std::fs::File;
 use std::io::Read;
@@ -38,6 +39,10 @@ pub type PostgresPool = Pool<PostgresConnectionManager<MakeTlsConnector>>;
 pub struct PostgresClient {
   pub pool: Arc<PostgresPool>,
   pub db: Arc<TokenMetadataDb>,
+  // TODO: add graph which will be used by baseer
+  // pub graph: Arc<AddressRelationsGraphDb>,
+  // TODO: add time series which will be used by siraaj
+  // pub time_series: Arc<TokenPriceActivityDb>,
 }
 
 // this file is for normal postgres db
