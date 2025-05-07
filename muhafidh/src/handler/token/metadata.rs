@@ -44,7 +44,7 @@ impl TokenHandlerMetadata {
         self.db.redis.kv.set(&token.mint.to_string(), &token).await?;
         
         // Publish event for cross-service communication
-        self.db.redis.queue.publish_new_token_metadata(&token).await?;
+        self.db.redis.queue.publish("new_token_created", &token).await?;
         
         info!("stored_new_token_metadata::{}::{}", token.mint, token.creator);
         Ok(())
