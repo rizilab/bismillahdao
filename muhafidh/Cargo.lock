@@ -3034,6 +3034,7 @@ name = "muhafidh"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "bb8",
  "bb8-postgres",
@@ -3087,6 +3088,8 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-postgres",
+ "tokio-retry",
+ "tokio-util",
  "toml 0.8.22",
  "tracing",
  "tracing-subscriber",

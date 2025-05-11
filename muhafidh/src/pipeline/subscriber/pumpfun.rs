@@ -11,16 +11,16 @@ use solana_client::rpc_config::RpcBlockSubscribeConfig;
 use solana_client::rpc_config::RpcBlockSubscribeFilter;
 use solana_sdk::commitment_config::CommitmentConfig;
 use tracing::debug;
+use tracing::info;
 
 use crate::constants::PUMP_FUN_PROGRAM_ID;
 use crate::engine::raqib::Raqib;
-use crate::processor::pumpfun::PfProgramInstructionProcessor;
+use crate::pipeline::processor::pumpfun::PfProgramInstructionProcessor;
 
 pub fn make_pumpfun_subscriber_pipeline(raqib: Raqib) -> Result<Pipeline> {
-  let ws_url =
-    dotenvy::var("PUMPFUN_MONITOR_RPC_NEW_TOKEN_WSS").expect("PUMPFUN_MONITOR_RPC_NEW_TOKEN_WSS not found in the .env");
+  let ws_url = raqib.config.rpc.get_ws_url();
 
-  debug!("raqib::pumpfun::subscriber::ws_url: {}", ws_url);
+  info!("raqib::pumpfun::subscriber::ws_url: {}", ws_url);
 
   let filters = Filters::new(
     RpcBlockSubscribeFilter::MentionsAccountOrProgram(PUMP_FUN_PROGRAM_ID.to_string()),

@@ -1,8 +1,12 @@
 pub mod metadata;
-pub mod cex_relation;
+pub mod creator;
 
 use crate::model::token::TokenMetadata;
-pub use metadata::TokenHandlerMetadataOperator;
+use crate::model::cex::Cex;
+use crate::storage::in_memory::creator::CreatorCexConnectionGraph;
+use crate::model::creator::CreatorMetadata;
+use creator::CreatorHandlerOperator;
+
 
 
 pub enum TokenHandler {
@@ -12,9 +16,14 @@ pub enum TokenHandler {
     UpdateBondedToken {
         token_metadata: TokenMetadata
     },
-    // UpdateCexSources {
-    //     mint: solana_pubkey::Pubkey,
-    //     cex_sources: Vec<solana_pubkey::Pubkey>,
-    //     cex_updated_at: u64,
-    // },
+}
+
+pub enum CreatorHandler {
+    CexConnection {
+        cex: Cex,
+        cex_connection: CreatorCexConnectionGraph
+    },
+    StoreCreator {
+        creator_metadata: CreatorMetadata
+    },
 }

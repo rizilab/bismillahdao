@@ -14,4 +14,6 @@ pub enum RedisClientError {
     RedisError(bb8_redis::redis::RedisError),
     #[error("[Redis] Key not found: {0}")]
     KeyNotFound(String),
+    #[error("[Redis] Subscribe error: {0}")]
+    SubscribeError(String),
 }

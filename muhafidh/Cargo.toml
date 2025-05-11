@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
+tokio-retry = "0.3.0"
+tokio-util = "0.7.13"
 anyhow = "1.0.80"
 thiserror = "2.0.12"
 reqwest = { version = "0.12.15", features = ["json", "native-tls-vendored", "blocking", "cookies"] }
@@ -17,6 +19,7 @@ urlencoding = "2.1.2"
 futures = "0.3.30"
 futures-util = "0.3.30"
 async-trait = "0.1.83"
+async-stream = "0.3.6"
 dotenvy = "0.15.7"
 clap = { version = "4.5.28", features = ["derive"] }
 tracing = "0.1.41"

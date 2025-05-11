@@ -2,18 +2,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cex {
-    pub name: String,
+    pub name: CexName,
     pub address: solana_pubkey::Pubkey,
     pub total_token_relations: u64,
 }
 
 impl Cex {
-    pub fn new(name: String, address: solana_pubkey::Pubkey, total_token_relations: u64) -> Self {
+    pub fn new(name: CexName, address: solana_pubkey::Pubkey, total_token_relations: u64) -> Self {
         Self { name, address, total_token_relations }
     }
     
-    pub fn get_exchange_name(&self) -> Option<CexName> {
-        match self.address.to_string().as_str() {
+    pub fn get_exchange_name(address: solana_pubkey::Pubkey) -> Option<CexName> {
+        match address.to_string().as_str() {
           "FpwQQhQQoEaVu3WU2qZMfF1hx48YyfwsLoRgXG83E99Q" => Some(CexName::CoinbaseHW1),
           "GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPqn7npE" => Some(CexName::CoinbaseHW2),
           "D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf" => Some(CexName::CoinbaseHW3),
@@ -71,57 +71,287 @@ impl Cex {
       }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CexName {
+    #[serde(rename = "coinbase_hw1")]
     CoinbaseHW1,
+    #[serde(rename = "coinbase_hw2")]
     CoinbaseHW2,
+    #[serde(rename = "coinbase_hw3")]
     CoinbaseHW3,
+    #[serde(rename = "coinbase_hw4")]
     CoinbaseHW4,
+    #[serde(rename = "coinbase_1")]
     Coinbase1,
+    #[serde(rename = "coinbase_2")]
     Coinbase2,
+    #[serde(rename = "coinbase_4")]
     Coinbase4,
+    #[serde(rename = "coinbase_5")]
     Coinbase5,
+    #[serde(rename = "coinbase_cw1")]
     CoinbaseCW1,
+    #[serde(rename = "coinbase_cw2")]
     CoinbaseCW2,
+    #[serde(rename = "coinbase_cw3")]
     CoinbaseCW3,
+    #[serde(rename = "coinbase_cw4")]
     CoinbaseCW4,
+    #[serde(rename = "coinbase_cw5")]
     CoinbaseCW5,
+    #[serde(rename = "coinbase_cw6")]
     CoinbaseCW6,
+    #[serde(rename = "coinbase_cw7")]
     CoinbaseCW7,
+    #[serde(rename = "coinbase_cw8")]
     CoinbaseCW8,
+    #[serde(rename = "coinbase_cw9")]
     CoinbaseCW9,
+    #[serde(rename = "coinbase_cw10")]
     CoinbaseCW10,
+    #[serde(rename = "coinbase_cw11")]
     CoinbaseCW11,
+    #[serde(rename = "coinbase_cw12")]
     CoinbaseCW12,
+    #[serde(rename = "okx_hw1")]
     OKXHW1,
+    #[serde(rename = "okx_hw2")]
     OKXHW2,
+    #[serde(rename = "okx")]
     OKX,
+    #[serde(rename = "okx_2")]
     OKX2,
+    #[serde(rename = "mexc_1")]
     MEXC1,
+    #[serde(rename = "mexc_2")]
     MEXC2,
+    #[serde(rename = "kraken")]
     Kraken,
+    #[serde(rename = "kraken_cw")]
     KrakenCW,
+    #[serde(rename = "kraken_cw2")]
     KrakenCW2,
+    #[serde(rename = "binance_8")]
     Binance8,
+    #[serde(rename = "binance_1")]
     Binance1,
+    #[serde(rename = "binance_2")]
     Binance2,
+    #[serde(rename = "binance_3")]
     Binance3,
+    #[serde(rename = "binance_us_hw")]
     BinanceUSHW,
+    #[serde(rename = "binance_10")]
     Binance10,
+    #[serde(rename = "binance_11")]
     Binance11,
+    #[serde(rename = "binance_cw")]
     BinanceCW,
+    #[serde(rename = "bitget_cw")]
     BitgetCW,
+    #[serde(rename = "bitget_exchange")]
     BitgetExchange,
+    #[serde(rename = "gateio_1")]
     Gateio1,
+    #[serde(rename = "gateio_2")]
     Gateio2,
+    #[serde(rename = "bybit_hw")]
     BybitHW,
+    #[serde(rename = "bybit_cw")]
     BybitCW,
+    #[serde(rename = "bitfinex_hw")]
     BitfinexHW,
+    #[serde(rename = "bitfinex_cw")]
     BitfinexCW,
+    #[serde(rename = "kucoin_1")]
     KuCoin1,
+    #[serde(rename = "kucoin_2")]
     KuCoin2,
+    #[serde(rename = "kucoin_3")]
     KuCoin3,
+    #[serde(rename = "kucoin_cw")]
     KuCoinCW,
+    #[serde(rename = "poloniex_hw")]
     PoloniexHW,
+    #[serde(rename = "lbank")]
     LBank,
+    #[serde(rename = "stakecom_hot_wallet")]
     StakecomHotWallet
 }
+
+impl std::fmt::Display for CexName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CexName::CoinbaseHW1 => write!(f, "coinbase_hw1"),
+            CexName::CoinbaseHW2 => write!(f, "coinbase_hw2"),
+            CexName::CoinbaseHW3 => write!(f, "coinbase_hw3"),
+            CexName::CoinbaseHW4 => write!(f, "coinbase_hw4"),
+            CexName::Coinbase1 => write!(f, "coinbase_1"),
+            CexName::Coinbase2 => write!(f, "coinbase_2"),
+            CexName::Coinbase4 => write!(f, "coinbase_4"),
+            CexName::Coinbase5 => write!(f, "coinbase_5"),
+            CexName::CoinbaseCW1 => write!(f, "coinbase_cw1"),
+            CexName::CoinbaseCW2 => write!(f, "coinbase_cw2"),
+            CexName::CoinbaseCW3 => write!(f, "coinbase_cw3"),
+            CexName::CoinbaseCW4 => write!(f, "coinbase_cw4"),
+            CexName::CoinbaseCW5 => write!(f, "coinbase_cw5"),
+            CexName::CoinbaseCW6 => write!(f, "coinbase_cw6"),
+            CexName::CoinbaseCW7 => write!(f, "coinbase_cw7"),
+            CexName::CoinbaseCW8 => write!(f, "coinbase_cw8"),
+            CexName::CoinbaseCW9 => write!(f, "coinbase_cw9"),
+            CexName::CoinbaseCW10 => write!(f, "coinbase_cw10"),
+            CexName::CoinbaseCW11 => write!(f, "coinbase_cw11"),
+            CexName::CoinbaseCW12 => write!(f, "coinbase_cw12"),
+            CexName::OKXHW1 => write!(f, "okx_hw1"),
+            CexName::OKXHW2 => write!(f, "okx_hw2"),
+            CexName::OKX => write!(f, "okx"),
+            CexName::OKX2 => write!(f, "okx_2"),
+            CexName::MEXC1 => write!(f, "mexc_1"),
+            CexName::MEXC2 => write!(f, "mexc_2"),
+            CexName::Kraken => write!(f, "kraken"),
+            CexName::KrakenCW => write!(f, "kraken_cw"),
+            CexName::KrakenCW2 => write!(f, "kraken_cw2"),
+            CexName::Binance8 => write!(f, "binance_8"),
+            CexName::Binance1 => write!(f, "binance_1"),
+            CexName::Binance2 => write!(f, "binance_2"),
+            CexName::Binance3 => write!(f, "binance_3"),
+            CexName::BinanceUSHW => write!(f, "binance_us_hw"),
+            CexName::Binance10 => write!(f, "binance_10"),
+            CexName::Binance11 => write!(f, "binance_11"),
+            CexName::BinanceCW => write!(f, "binance_cw"),
+            CexName::BitgetCW => write!(f, "bitget_cw"),
+            CexName::BitgetExchange => write!(f, "bitget_exchange"),
+            CexName::Gateio1 => write!(f, "gateio_1"),
+            CexName::Gateio2 => write!(f, "gateio_2"),
+            CexName::BybitHW => write!(f, "bybit_hw"),
+            CexName::BybitCW => write!(f, "bybit_cw"),
+            CexName::BitfinexHW => write!(f, "bitfinex_hw"),
+            CexName::BitfinexCW => write!(f, "bitfinex_cw"),
+            CexName::KuCoin1 => write!(f, "kucoin_1"),
+            CexName::KuCoin2 => write!(f, "kucoin_2"),
+            CexName::KuCoin3 => write!(f, "kucoin_3"),
+            CexName::KuCoinCW => write!(f, "kucoin_cw"),
+            CexName::PoloniexHW => write!(f, "poloniex_hw"),
+            CexName::LBank => write!(f, "lbank"),
+            CexName::StakecomHotWallet => write!(f, "stakecom_hot_wallet"),
+        }
+    }
+}
+
+impl From<CexName> for String {
+    fn from(cex: CexName) -> Self {
+        match cex {
+            CexName::CoinbaseHW1 => "coinbase_hw1".to_string(),
+            CexName::CoinbaseHW2 => "coinbase_hw2".to_string(),
+            CexName::CoinbaseHW3 => "coinbase_hw3".to_string(),
+            CexName::CoinbaseHW4 => "coinbase_hw4".to_string(),
+            CexName::Coinbase1 => "coinbase_1".to_string(),
+            CexName::Coinbase2 => "coinbase_2".to_string(),
+            CexName::Coinbase4 => "coinbase_4".to_string(),
+            CexName::Coinbase5 => "coinbase_5".to_string(),
+            CexName::CoinbaseCW1 => "coinbase_cw1".to_string(),
+            CexName::CoinbaseCW2 => "coinbase_cw2".to_string(),
+            CexName::CoinbaseCW3 => "coinbase_cw3".to_string(),
+            CexName::CoinbaseCW4 => "coinbase_cw4".to_string(),
+            CexName::CoinbaseCW5 => "coinbase_cw5".to_string(),
+            CexName::CoinbaseCW6 => "coinbase_cw6".to_string(),
+            CexName::CoinbaseCW7 => "coinbase_cw7".to_string(),
+            CexName::CoinbaseCW8 => "coinbase_cw8".to_string(),
+            CexName::CoinbaseCW9 => "coinbase_cw9".to_string(),
+            CexName::CoinbaseCW10 => "coinbase_cw10".to_string(),
+            CexName::CoinbaseCW11 => "coinbase_cw11".to_string(),
+            CexName::CoinbaseCW12 => "coinbase_cw12".to_string(),
+            CexName::OKXHW1 => "okx_hw1".to_string(),
+            CexName::OKXHW2 => "okx_hw2".to_string(),
+            CexName::OKX => "okx".to_string(),
+            CexName::OKX2 => "okx_2".to_string(),
+            CexName::MEXC1 => "mexc_1".to_string(),
+            CexName::MEXC2 => "mexc_2".to_string(),
+            CexName::Kraken => "kraken".to_string(),
+            CexName::KrakenCW => "kraken_cw".to_string(),
+            CexName::KrakenCW2 => "kraken_cw2".to_string(),
+            CexName::Binance8 => "binance_8".to_string(),
+            CexName::Binance1 => "binance_1".to_string(),
+            CexName::Binance2 => "binance_2".to_string(),
+            CexName::Binance3 => "binance_3".to_string(),
+            CexName::BinanceUSHW => "binance_us_hw".to_string(),
+            CexName::Binance10 => "binance_10".to_string(),
+            CexName::Binance11 => "binance_11".to_string(),
+            CexName::BinanceCW => "binance_cw".to_string(),
+            CexName::BitgetCW => "bitget_cw".to_string(),
+            CexName::BitgetExchange => "bitget_exchange".to_string(),
+            CexName::Gateio1 => "gateio_1".to_string(),
+            CexName::Gateio2 => "gateio_2".to_string(),
+            CexName::BybitHW => "bybit_hw".to_string(),
+            CexName::BybitCW => "bybit_cw".to_string(),
+            CexName::BitfinexHW => "bitfinex_hw".to_string(),
+            CexName::BitfinexCW => "bitfinex_cw".to_string(),
+            CexName::KuCoin1 => "kucoin_1".to_string(),
+            CexName::KuCoin2 => "kucoin_2".to_string(),
+            CexName::KuCoin3 => "kucoin_3".to_string(),
+            CexName::KuCoinCW => "kucoin_cw".to_string(),
+            CexName::PoloniexHW => "poloniex_hw".to_string(),
+            CexName::LBank => "lbank".to_string(),
+            CexName::StakecomHotWallet => "stakecom_hot_wallet".to_string(),
+        }
+    }
+}
+
+impl CexName {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CexName::CoinbaseHW1 => "coinbase_hw1",
+            CexName::CoinbaseHW2 => "coinbase_hw2",
+            CexName::CoinbaseHW3 => "coinbase_hw3",
+            CexName::CoinbaseHW4 => "coinbase_hw4",
+            CexName::Coinbase1 => "coinbase_1",
+            CexName::Coinbase2 => "coinbase_2",
+            CexName::Coinbase4 => "coinbase_4",
+            CexName::Coinbase5 => "coinbase_5",
+            CexName::CoinbaseCW1 => "coinbase_cw1",
+            CexName::CoinbaseCW2 => "coinbase_cw2",
+            CexName::CoinbaseCW3 => "coinbase_cw3",
+            CexName::CoinbaseCW4 => "coinbase_cw4",
+            CexName::CoinbaseCW5 => "coinbase_cw5",
+            CexName::CoinbaseCW6 => "coinbase_cw6",
+            CexName::CoinbaseCW7 => "coinbase_cw7",
+            CexName::CoinbaseCW8 => "coinbase_cw8",
+            CexName::CoinbaseCW9 => "coinbase_cw9",
+            CexName::CoinbaseCW10 => "coinbase_cw10",
+            CexName::CoinbaseCW11 => "coinbase_cw11",
+            CexName::CoinbaseCW12 => "coinbase_cw12",
+            CexName::OKXHW1 => "okx_hw1",
+            CexName::OKXHW2 => "okx_hw2",
+            CexName::OKX => "okx",
+            CexName::OKX2 => "okx_2",
+            CexName::MEXC1 => "mexc_1",
+            CexName::MEXC2 => "mexc_2",
+            CexName::Kraken => "kraken",
+            CexName::KrakenCW => "kraken_cw",
+            CexName::KrakenCW2 => "kraken_cw2",
+            CexName::Binance8 => "binance_8",
+            CexName::Binance1 => "binance_1",
+            CexName::Binance2 => "binance_2",
+            CexName::Binance3 => "binance_3",
+            CexName::BinanceUSHW => "binance_us_hw",
+            CexName::Binance10 => "binance_10",
+            CexName::Binance11 => "binance_11",
+            CexName::BinanceCW => "binance_cw",
+            CexName::BitgetCW => "bitget_cw",
+            CexName::BitgetExchange => "bitget_exchange",
+            CexName::Gateio1 => "gateio_1",
+            CexName::Gateio2 => "gateio_2",
+            CexName::BybitHW => "bybit_hw",
+            CexName::BybitCW => "bybit_cw",
+            CexName::BitfinexHW => "bitfinex_hw",
+            CexName::BitfinexCW => "bitfinex_cw",
+            CexName::KuCoin1 => "kucoin_1",
+            CexName::KuCoin2 => "kucoin_2",
+            CexName::KuCoin3 => "kucoin_3",
+            CexName::KuCoinCW => "kucoin_cw",
+            CexName::PoloniexHW => "poloniex_hw",
+            CexName::LBank => "lbank",
+            CexName::StakecomHotWallet => "stakecom_hot_wallet",
+        }
+    }
+} 

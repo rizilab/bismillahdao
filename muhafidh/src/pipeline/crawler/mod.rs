@@ -1,2 +1,2 @@
-pub mod address_relation;
+pub mod creator;
 pub mod socials_metadata;

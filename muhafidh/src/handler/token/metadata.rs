@@ -1,5 +1,5 @@
 use crate::handler::shutdown::ShutdownSignal;
-use crate::handler::token::TokenHandler;
+use super::TokenHandler;
 use crate::model::token::TokenMetadata;
 use crate::storage::StorageEngine;
 use carbon_pumpfun_decoder::instructions::create::{Create, CreateInstructionAccounts};
@@ -90,10 +90,10 @@ pub struct TokenHandlerMetadataOperator {
 
 impl TokenHandlerMetadataOperator {
     pub fn new(db: Arc<StorageEngine>, shutdown: ShutdownSignal) -> Self {
-        // Use Listen's approach with 1000 buffer
         let (sender, receiver) = mpsc::channel(1000);
         
         let receiver = TokenHandlerMetadata::new(receiver, db, shutdown.clone());
+        
         // Spawn the actor
         tokio::spawn(run_token_handler_metadata(receiver));
         

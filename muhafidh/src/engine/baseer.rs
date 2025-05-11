@@ -2,19 +2,34 @@ use crate::config::Config;
 use crate::config::load_config;
 use crate::storage::redis::model::NewTokenCache;
 use crate::Result;
+use crate::error::EngineError;
+use crate::error::RedisClientError;
 use crate::setup_tracing;
 use crate::storage::make_storage_engine;
 use crate::storage::StorageEngine;
 use crate::handler::shutdown::ShutdownSignal;
+use crate::handler::token::creator::CreatorHandlerOperator;
 use std::sync::Arc;
 use futures_util::StreamExt;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+use std::time::Duration;
+
+use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
+use tokio::task::JoinHandle;
 
 use tracing::info;
+use tracing::debug;
+use tracing::error;
+use crate::err_with_loc;
+
+use async_stream;
 
 #[derive(Clone)]
 pub struct Baseer {
   pub config: Config,
   pub db:     Arc<StorageEngine>,
+  pub creator_handler: Arc<CreatorHandlerOperator>,
 }
 
 impl Baseer {
@@ -31,43 +46,57 @@ impl Baseer {
     
     let shutdown_signal = ShutdownSignal::new();
     
-    // db_engine.postgres.graph.health_check().await?;
-    // db_engine.postgres.graph.initialize().await?;
-
-    // let token_handler = Arc::new(TokenHandlerMetadataOperator::new(
-    //     db_engine.clone(), shutdown_signal.clone()));
-
-
+    let creator_handler = Arc::new(CreatorHandlerOperator::new(
+        db_engine.clone(),
+        shutdown_signal.clone(),
+    ));
     
-    let baseer = Baseer { config, db: db_engine.clone() };
+    let baseer = Baseer { 
+        config, 
+        db: db_engine.clone(),
+        creator_handler,
+    };
 
-    // let mut pipeline = make_account_crawler_pipeline(baseer)?;
-    
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
     let db_engine = db_engine.clone();
+            
+    let (sender, receiver) = mpsc::channel(1000);
+    
+    let new_token_creator_analyzer = baseer.spawn_new_token_creator_analyzer(
+        db_engine.clone(),
+        shutdown_tx.clone(),
+        receiver,
+        10
+    );
 
-    let analyzer_handle = baseer.spawn_token_analyzer(
+    let new_token_subscriber = baseer.spawn_new_token_subscriber(
         db_engine.clone(),
         shutdown_signal.clone(),
-        shutdown_tx.clone()
+        shutdown_tx.clone(),
+        sender,
     );
     
     tokio::select! {
-        _ = analyzer_handle => {
+        _ = new_token_creator_analyzer => {
+            info!("new_token_creator_analyzer::completed");
+            shutdown_signal.shutdown();
+            let _ = shutdown_tx.send(()).await;
+        },
+        _ = new_token_subscriber => {
+            info!("new_token_subscriber::completed");
             shutdown_signal.shutdown();
             let _ = shutdown_tx.send(()).await;
         },
         _ = tokio::signal::ctrl_c() => {
             info!("termination_signal::graceful_shutdown");
-            
             shutdown_signal.shutdown();
             let _ = shutdown_tx.send(()).await;
         },
         _ = shutdown_rx.recv() => {
             info!("shutdown_signal::other_component");
-            
             shutdown_signal.shutdown();
+            let _ = shutdown_tx.send(()).await;
         }
     }
 
@@ -79,17 +108,98 @@ impl Baseer {
     Ok(())
   }
   
-  fn spawn_token_analyzer(
+  fn spawn_new_token_creator_analyzer(
+    &self,
+    db_engine: Arc<StorageEngine>,
+    shutdown_tx: mpsc::Sender<()>,
+    mut receiver: mpsc::Receiver<NewTokenCache>,
+    max_concurrent_requests: usize,
+  ) -> JoinHandle<Result<()>> {
+    let baseer = self.clone();
+    let creator_handler = self.creator_handler.clone();
+    let cancellation_token = CancellationToken::new();
+    
+    tokio::spawn(async move {
+        let creator_stream_task = async {
+            let creator_stream = async_stream::stream! {
+                while let Some(token) = receiver.recv().await {
+                    yield token;
+                }
+            };
+
+            creator_stream
+                .map(|token| {
+                    let baseer = baseer.clone();
+                    let child_token = cancellation_token.child_token();
+                    async move {
+                        let mut pipeline = make_creator_crawler_pipeline(
+                            baseer.clone(),
+                            token.clone(),
+                            child_token.clone())?;
+
+                        tokio::select! {
+                            result = pipeline.run() => {
+                                match result {
+                                    Ok(_) => {
+                                        info!("pipeline_completed::creator::{}::{}", token.name, token.creator);
+                                        Ok(())
+                                    },
+                                    Err(e) => {
+                                        error!("pipeline_error: {}", e);
+                                        Err(err_with_loc!(EngineError::EngineError(e)))
+                                    }
+                                }
+                            },
+                            _ = child_token.cancelled() => {
+                                info!("cancelling_pipeline::creator::{}::{}", token.name, token.creator);
+                                Ok(())
+                            }
+                        }
+                    }
+                })
+                .buffer_unordered(max_concurrent_requests)
+                .for_each(|result| async move {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    if let Err(e) = result {
+                        error!("creator_analysis_failed: {}", e);
+                    }                   
+                })
+                .await;
+        };
+
+        tokio::select! {
+            _ = creator_stream_task => {
+                info!("creator_stream_task::completed");
+                creator_handler.shutdown();
+                let _ = shutdown_tx.send(()).await;
+            },
+            _ = tokio::signal::ctrl_c() => {
+                info!("termination_signal::graceful_shutdown");
+                cancellation_token.cancel();
+                creator_handler.shutdown();
+                let _ = shutdown_tx.send(()).await;
+            },
+        }
+        Ok(())
+    })
+  }
+        
+  fn spawn_new_token_subscriber(
     &self,
     db_engine: Arc<StorageEngine>,
     shutdown_signal: ShutdownSignal,
     shutdown_tx: tokio::sync::mpsc::Sender<()>,
-) -> tokio::task::JoinHandle<Result<()>> {
+    sender: mpsc::Sender<NewTokenCache>,
+) -> JoinHandle<Result<()>> {
+    let baseer = self.clone();
     tokio::spawn(async move {
         let mut subscriber = db_engine.redis.queue.pubsub.as_ref().write().await;
         
         // Subscribe to the channel
-        subscriber.subscribe("new_token_created").await?;
+        subscriber.subscribe("new_token_created").await.map_err(|e| {
+            error!("failed_to_subscribe_to_new_token_created: {}", e);
+            err_with_loc!(RedisClientError::SubscribeError(format!("failed_to_subscribe_to_new_token_created: {}", e)))
+        })?;
         
         // Process messages
         let mut msg_stream = subscriber.on_message();
@@ -101,26 +211,35 @@ impl Baseer {
         tokio::select! {
             _ = shutdown_future => {
                 info!("Token analyzer received shutdown signal");
-                Ok(())
+                let _ = shutdown_tx.send(()).await;
             }
             _ = async {
-                while let Some(msg) = msg_stream.next().await {
-                    if let Ok(payload) = msg.get_payload::<String>() {
-                        if let Ok(token) = serde_json::from_str::<NewTokenCache>(&payload) {
-                            info!("new_token_created: {}", token.mint);
-                            
-                            // Here you would trigger your CEX analysis
-                            // This will be handled by the Baseer engine
+                loop {
+                    match msg_stream.next().await {
+                        Some(msg) => {
+                            if let Ok(payload) = msg.get_payload::<String>() {
+                                if let Ok(token) = serde_json::from_str::<NewTokenCache>(&payload) {
+                                    debug!("new_token_received: {}", token.mint);
+                                    if let Err(e) = sender.try_send(token) {
+                                        error!("failed_to_send_token: {}", e);
+                                        let _ = shutdown_tx.send(()).await;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        None => {
+                            info!("Token analyzer message stream ended");
+                            let _ = shutdown_tx.send(()).await;
+                            break;
                         }
                     }
                 }
-                Ok::<(), crate::Error>(())
             } => {
                 info!("Token analyzer message stream ended");
-                let _ = shutdown_tx.send(()).await;
-                Ok::<(), crate::Error>(())
             }
         }
+        Ok(())
     })
-}
+  }
 }
