@@ -45,10 +45,12 @@ impl Baseer {
     info!("db_engine::created");
     
     let shutdown_signal = ShutdownSignal::new();
-    
+    let cancellation_token = CancellationToken::new();
     let creator_handler = Arc::new(CreatorHandlerOperator::new(
         db_engine.clone(),
         shutdown_signal.clone(),
+        config.rpc.get_http_url(),
+        cancellation_token.clone(),
     ));
     
     let baseer = Baseer { 
@@ -59,19 +61,16 @@ impl Baseer {
 
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
-    let db_engine = db_engine.clone();
-            
     let (sender, receiver) = mpsc::channel(1000);
     
     let new_token_creator_analyzer = baseer.spawn_new_token_creator_analyzer(
-        db_engine.clone(),
         shutdown_tx.clone(),
         receiver,
-        10
+        10,
+        cancellation_token.clone()
     );
 
     let new_token_subscriber = baseer.spawn_new_token_subscriber(
-        db_engine.clone(),
         shutdown_signal.clone(),
         shutdown_tx.clone(),
         sender,
@@ -110,30 +109,33 @@ impl Baseer {
   
   fn spawn_new_token_creator_analyzer(
     &self,
-    db_engine: Arc<StorageEngine>,
     shutdown_tx: mpsc::Sender<()>,
     mut receiver: mpsc::Receiver<NewTokenCache>,
     max_concurrent_requests: usize,
+    cancellation_token: CancellationToken,
   ) -> JoinHandle<Result<()>> {
     let baseer = self.clone();
     let creator_handler = self.creator_handler.clone();
-    let cancellation_token = CancellationToken::new();
     
     tokio::spawn(async move {
+        let creator_handler = creator_handler.clone();
         let creator_stream_task = async {
             let creator_stream = async_stream::stream! {
                 while let Some(token) = receiver.recv().await {
                     yield token;
                 }
             };
-
+            let rpc_url = baseer.config.rpc.get_http_url();
+            let creator_handler = creator_handler.clone();
             creator_stream
                 .map(|token| {
-                    let baseer = baseer.clone();
                     let child_token = cancellation_token.child_token();
+                    let rpc_url = rpc_url.clone();
+                    let creator_handler = creator_handler.clone();
                     async move {
                         let mut pipeline = make_creator_crawler_pipeline(
-                            baseer.clone(),
+                            rpc_url,
+                            creator_handler.clone(),
                             token.clone(),
                             child_token.clone())?;
 
@@ -186,14 +188,13 @@ impl Baseer {
         
   fn spawn_new_token_subscriber(
     &self,
-    db_engine: Arc<StorageEngine>,
     shutdown_signal: ShutdownSignal,
     shutdown_tx: tokio::sync::mpsc::Sender<()>,
     sender: mpsc::Sender<NewTokenCache>,
 ) -> JoinHandle<Result<()>> {
     let baseer = self.clone();
     tokio::spawn(async move {
-        let mut subscriber = db_engine.redis.queue.pubsub.as_ref().write().await;
+        let mut subscriber = baseer.db.redis.queue.pubsub.as_ref().write().await;
         
         // Subscribe to the channel
         subscriber.subscribe("new_token_created").await.map_err(|e| {

@@ -167,8 +167,7 @@ fn signature_fetcher(
 
     tokio::spawn(async move {
         let mut last_fetched_signature = filters.before_signature;
-        let mut until_signature = filters.until_signature;
-        let mut most_recent_signature: Option<Signature> = None;
+        let until_signature = filters.until_signature;
         
         // Single pass through signatures
         loop {
@@ -192,6 +191,7 @@ fn signature_fetcher(
 
                             if signatures.is_empty() {
                                 // No more signatures to fetch, we're done
+                                tokio::time::sleep(polling_interval).await;
                                 break;
                             }
 

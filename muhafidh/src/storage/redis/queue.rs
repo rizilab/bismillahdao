@@ -8,16 +8,25 @@ use crate::RedisClientError;
 use bb8_redis::RedisConnectionManager;
 use bb8::PooledConnection;
 use redis::aio::PubSub;
-use tracing::info;
 use tracing::debug;
 use tracing::error;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use std::fmt;
 
 #[derive(Clone)]
 pub struct TokenMetadataQueue {
   pub pool: RedisPool,
   pub pubsub: Arc<RwLock<PubSub>>,
+}
+
+impl fmt::Debug for TokenMetadataQueue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TokenMetadataQueue")
+            .field("pool", &self.pool)
+            .field("pubsub", &format_args!("Arc<RwLock<PubSub@{:p}>>", Arc::as_ptr(&self.pubsub)))
+            .finish()
+    }
 }
 
 impl TokenMetadataQueue {

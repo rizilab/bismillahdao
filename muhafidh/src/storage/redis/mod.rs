@@ -16,7 +16,7 @@ pub use queue::TokenMetadataQueue;
 
 pub type RedisPool = Pool<RedisConnectionManager>;
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct RedisClient {
   pub kv: Arc<TokenMetadataKv>,
   pub queue: Arc<TokenMetadataQueue>,

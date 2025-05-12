@@ -13,5 +13,5 @@ pub struct TransactionEdge {
     pub from: solana_pubkey::Pubkey,
     pub to: solana_pubkey::Pubkey,
     pub amount: f64,
-    pub timestamp: u64,
+    pub timestamp: i64,
 }

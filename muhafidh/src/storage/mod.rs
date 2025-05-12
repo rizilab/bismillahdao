@@ -13,7 +13,7 @@ use tracing::instrument;
 use crate::config::Config;
 use crate::storage::postgres::make_postgres_client;
 use crate::storage::redis::make_redis_client;
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct StorageEngine {
   pub postgres: Arc<PostgresClient>,
   pub redis: Arc<RedisClient>,

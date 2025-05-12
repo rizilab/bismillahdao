@@ -44,21 +44,22 @@ pub struct StorageRedisConfig {
 pub struct RpcConfig {
   pub http_url: String,
   pub ws_url:   String,
-  pub api_key:  String,
+  pub http_api_key:  String,
+  pub ws_api_key: String,
 }
 
 impl RpcConfig {
   pub fn get_http_url(&self) -> String {
-    if !self.api_key.is_empty() {
-      format!("https://{}/{}", self.http_url, self.api_key)
+    if !self.http_api_key.is_empty() {
+      format!("https://{}/{}", self.http_url, self.http_api_key)
     } else {
       format!("https://{}/", self.http_url)
     }
   }
 
   pub fn get_ws_url(&self) -> String {
-    if !self.api_key.is_empty() {
-      format!("wss://{}/{}", self.ws_url, self.api_key)
+    if !self.ws_api_key.is_empty() {
+      format!("wss://{}/{}", self.ws_url, self.ws_api_key)
     } else {
       format!("wss://{}/", self.ws_url)
     }

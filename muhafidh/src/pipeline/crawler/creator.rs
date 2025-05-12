@@ -9,14 +9,12 @@ use std::time::Duration;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use crate::storage::redis::model::NewTokenCache;
-use tracing::info;
 use tracing::debug;
 
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::engine::baseer::Baseer;
+use crate::handler::token::creator::CreatorHandlerOperator;
 
-pub fn make_creator_crawler_pipeline(baseer: Baseer, token: NewTokenCache, cancellation_token: CancellationToken) -> Result<Pipeline> {
-    let rpc_url = baseer.config.rpc.get_http_url();
+pub fn make_creator_crawler_pipeline(rpc_url: String, creator_handler: Arc<CreatorHandlerOperator>, token: NewTokenCache, cancellation_token: CancellationToken) -> Result<Pipeline> {
     debug!("rpc_url: {}", rpc_url);
     
     let filters = Filters::new(
@@ -34,13 +32,21 @@ pub fn make_creator_crawler_pipeline(baseer: Baseer, token: NewTokenCache, cance
         None,
         10,
     );
+    
+    let mut processor = CreatorInstructionProcessor::new(
+        token.mint, 
+        creator_handler.clone(), 
+        cancellation_token.clone()
+    );
+    
+    processor.set_creator(token.creator);
 
     let pipeline = Pipeline::builder()
         .datasource(rpc_crawler)
         .datasource_cancellation_token(cancellation_token.clone())
         .metrics(Arc::new(LogMetrics::new()))
         .shutdown_strategy(ShutdownStrategy::Immediate)
-        .instruction(SystemProgramDecoder, CreatorInstructionProcessor::new(token.mint, baseer.creator_handler.clone(), cancellation_token))
+        .instruction(SystemProgramDecoder, processor)
         .build()?;
 
     Ok(pipeline)
