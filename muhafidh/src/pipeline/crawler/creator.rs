@@ -20,6 +20,7 @@ pub fn make_creator_crawler_pipeline(
   creator_handler: Arc<CreatorHandlerOperator>,
   token: NewTokenCache,
   cancellation_token: CancellationToken,
+  max_depth: usize,
 ) -> Result<Pipeline> {
   debug!("rpc_url: {}", rpc_url);
 
@@ -27,7 +28,8 @@ pub fn make_creator_crawler_pipeline(
 
   let rpc_crawler = RpcTransactionAnalyzer::new(rpc_url, token.creator, 500, Duration::from_secs(1), filters, None, 10);
 
-  let mut processor = CreatorInstructionProcessor::new(token.mint, creator_handler.clone(), cancellation_token.clone());
+  let mut processor =
+    CreatorInstructionProcessor::new(token.mint, creator_handler.clone(), cancellation_token.clone(), max_depth);
 
   processor.set_creator(token.creator);
 

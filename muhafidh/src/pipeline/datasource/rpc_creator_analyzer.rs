@@ -166,6 +166,11 @@ fn signature_fetcher(
     let mut last_fetched_signature = filters.before_signature;
     let until_signature = filters.until_signature;
 
+    // Define constants for request handling
+    const TIMEOUT_DURATION: Duration = Duration::from_secs(30);
+    const MAX_RETRIES: usize = 3;
+    const BASE_RETRY_DELAY: u64 = 500; // milliseconds
+
     // Single pass through signatures
     loop {
       tokio::select! {
@@ -173,59 +178,105 @@ fn signature_fetcher(
               info!("Cancelling RPC Crawler signature fetcher...");
               break;
           }
-          result = rpc_client.get_signatures_for_address_with_config(
-              &account,
-              GetConfirmedSignaturesForAddress2Config {
-                  before: last_fetched_signature,
-                  until: until_signature,
-                  limit: Some(batch_limit),
-                  commitment: Some(commitment.unwrap_or(CommitmentConfig::confirmed())),
-              }
-          ) =>
-              match result {
-                  Ok(signatures) => {
-                      let start = Instant::now();
+          _ = async {
+              let mut retry_count = 0;
+              let mut signatures_result = None;
 
-                      if signatures.is_empty() {
-                          // No more signatures to fetch, we're done
-                          tokio::time::sleep(polling_interval).await;
-                          break;
-                      }
-
-                      // Process signatures in reverse order (oldest to newest)
-                      for sig_info in signatures.iter().rev() {
-                          let signature = match Signature::from_str(&sig_info.signature) {
-                              Ok(sig) => sig,
-                              Err(e) => {
-                                  error!("Invalid signature: {:?}", e);
-                                  continue;
+              // Retry loop for fetching signatures
+              while retry_count < MAX_RETRIES {
+                  match tokio::time::timeout(
+                      TIMEOUT_DURATION,
+                      rpc_client.get_signatures_for_address_with_config(
+                          &account,
+                          GetConfirmedSignaturesForAddress2Config {
+                              before: last_fetched_signature,
+                              until: until_signature,
+                              limit: Some(batch_limit),
+                              commitment: Some(commitment.unwrap_or(CommitmentConfig::confirmed())),
+                          }
+                      )
+                  ).await {
+                      // Request completed within timeout
+                      Ok(result) => match result {
+                          Ok(signatures) => {
+                              signatures_result = Some(signatures);
+                              break;
+                          },
+                          Err(e) => {
+                              retry_count += 1;
+                              if retry_count >= MAX_RETRIES {
+                                  error!("Error fetching signatures after {} retries: {:?}", MAX_RETRIES, e);
+                                  break;
                               }
-                          };
 
-                          if let Err(e) = signature_sender.send(signature).await {
-                              error!("Failed to send signature: {:?}", e);
+                              let backoff_delay = BASE_RETRY_DELAY * 2u64.pow(retry_count as u32);
+                              error!("Error fetching signatures, retrying in {:?} (attempt {}/{}): {:?}",
+                                    Duration::from_millis(backoff_delay),
+                                    retry_count, MAX_RETRIES, e);
+
+                              tokio::time::sleep(Duration::from_millis(backoff_delay)).await;
+                          }
+                      },
+                      // Request timed out
+                      Err(_) => {
+                          retry_count += 1;
+                          error!("Timeout fetching signatures, retrying in {:?} (attempt {}/{})",
+                                Duration::from_millis(BASE_RETRY_DELAY * 2u64.pow(retry_count as u32)),
+                                retry_count, MAX_RETRIES);
+
+                          if retry_count >= MAX_RETRIES {
+                              error!("Timeout fetching signatures after {} retries", MAX_RETRIES);
                               break;
                           }
+
+                          let backoff_delay = BASE_RETRY_DELAY * 2u64.pow(retry_count as u32);
+                          tokio::time::sleep(Duration::from_millis(backoff_delay)).await;
                       }
-
-                      // Update last_fetched_signature to the oldest signature we've seen
-                      last_fetched_signature = signatures
-                          .first()
-                          .and_then(|s| Signature::from_str(&s.signature).ok());
-
-                      let time_taken = start.elapsed().as_millis();
-                      metrics.record_histogram("transaction_crawler_signatures_fetch_times_milliseconds", time_taken as f64)
-                          .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
-
-                      metrics.increment_counter("transaction_crawler_signatures_fetched", signatures.len() as u64)
-                          .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
-                  }
-                  Err(e) => {
-                      error!("Error fetching signatures: {:?}", e);
-                      tokio::time::sleep(Duration::from_secs(1)).await;
-                      break;
                   }
               }
+
+              // Process the result
+              if let Some(signatures) = signatures_result {
+                  let start = Instant::now();
+
+                  if signatures.is_empty() {
+                      // No more signatures to fetch, we're done
+                      tokio::time::sleep(polling_interval).await;
+                      return;
+                  }
+
+                  // Process signatures in reverse order (oldest to newest)
+                  for sig_info in signatures.iter().rev() {
+                      let signature = match Signature::from_str(&sig_info.signature) {
+                          Ok(sig) => sig,
+                          Err(e) => {
+                              error!("Invalid signature: {:?}", e);
+                              continue;
+                          }
+                      };
+
+                      if let Err(e) = signature_sender.send(signature).await {
+                          error!("Failed to send signature: {:?}", e);
+                          break;
+                      }
+                  }
+
+                  // Update last_fetched_signature to the oldest signature we've seen
+                  last_fetched_signature = signatures
+                      .first()
+                      .and_then(|s| Signature::from_str(&s.signature).ok());
+
+                  let time_taken = start.elapsed().as_millis();
+                  metrics.record_histogram("transaction_crawler_signatures_fetch_times_milliseconds", time_taken as f64)
+                      .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
+
+                  metrics.increment_counter("transaction_crawler_signatures_fetched", signatures.len() as u64)
+                      .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
+              } else {
+                  // If we couldn't get signatures after retries, wait a bit before trying again
+                  tokio::time::sleep(Duration::from_secs(1)).await;
+              }
+          } => {}
       }
     }
   })
@@ -259,28 +310,76 @@ fn transaction_fetcher(
           async move {
             let start = Instant::now();
 
-            match rpc_client
-              .get_transaction_with_config(&signature, RpcTransactionConfig {
-                encoding:                          Some(UiTransactionEncoding::Base64),
-                commitment:                        Some(commitment.unwrap_or(CommitmentConfig::confirmed())),
-                max_supported_transaction_version: Some(0),
-              })
+            // Define a timeout for RPC requests
+            let timeout_duration = Duration::from_secs(30);
+
+            // Use a retry mechanism with backoff
+            let mut retry_count = 0;
+            const MAX_RETRIES: usize = 3;
+
+            loop {
+              match tokio::time::timeout(
+                timeout_duration,
+                rpc_client.get_transaction_with_config(&signature, RpcTransactionConfig {
+                  encoding:                          Some(UiTransactionEncoding::Base64),
+                  commitment:                        Some(commitment.unwrap_or(CommitmentConfig::confirmed())),
+                  max_supported_transaction_version: Some(0),
+                }),
+              )
               .await
-            {
-              Ok(tx) => {
-                let time_taken = start.elapsed().as_millis();
+              {
+                // Request completed within timeout
+                Ok(result) => {
+                  match result {
+                    Ok(tx) => {
+                      let time_taken = start.elapsed().as_millis();
 
-                metrics
-                  .record_histogram("transaction_crawler_transaction_fetch_times_milliseconds", time_taken as f64)
-                  .await
-                  .unwrap();
+                      metrics
+                        .record_histogram("transaction_crawler_transaction_fetch_times_milliseconds", time_taken as f64)
+                        .await
+                        .unwrap_or_else(|value| error!("Error recording metric: {}", value));
 
-                Some((signature, tx))
-              },
-              Err(e) => {
-                error!("Error fetching transaction {}: {:?}", signature, e);
-                None
-              },
+                      return Some((signature, tx));
+                    },
+                    Err(e) => {
+                      // Handle errors with retry logic
+                      retry_count += 1;
+
+                      if retry_count >= MAX_RETRIES {
+                        error!("Error fetching transaction {} after {} retries: {:?}", signature, MAX_RETRIES, e);
+                        return None;
+                      }
+
+                      // Exponential backoff
+                      let backoff_duration = Duration::from_millis(500 * 2u64.pow(retry_count as u32));
+                      error!(
+                        "Error fetching transaction {}, retrying in {:?} (attempt {}/{}): {:?}",
+                        signature, backoff_duration, retry_count, MAX_RETRIES, e
+                      );
+                      tokio::time::sleep(backoff_duration).await;
+                      continue;
+                    },
+                  }
+                },
+                // Request timed out
+                Err(_) => {
+                  retry_count += 1;
+
+                  if retry_count >= MAX_RETRIES {
+                    error!("Timeout fetching transaction {} after {} retries", signature, MAX_RETRIES);
+                    return None;
+                  }
+
+                  // Exponential backoff
+                  let backoff_duration = Duration::from_millis(500 * 2u64.pow(retry_count as u32));
+                  error!(
+                    "Timeout fetching transaction {}, retrying in {:?} (attempt {}/{})",
+                    signature, backoff_duration, retry_count, MAX_RETRIES
+                  );
+                  tokio::time::sleep(backoff_duration).await;
+                  continue;
+                },
+              }
             }
           }
         })

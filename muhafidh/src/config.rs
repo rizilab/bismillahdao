@@ -14,6 +14,7 @@ pub struct Config {
   pub storage_postgres: StoragePostgresConfig,
   pub storage_redis:    StorageRedisConfig,
   pub rpc:              RpcConfig,
+  pub creator_analyzer: CreatorAnalyzerConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -46,6 +47,11 @@ pub struct RpcConfig {
   pub ws_url:       String,
   pub http_api_key: String,
   pub ws_api_key:   String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreatorAnalyzerConfig {
+  pub max_depth: usize,
 }
 
 impl RpcConfig {

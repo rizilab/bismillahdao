@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 
+use anyhow::Result;
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
 use native_tls::Certificate;
@@ -20,32 +21,28 @@ use tracing::instrument;
 
 use crate::config::StoragePostgresConfig;
 use crate::err_with_loc;
-use crate::error::PostgresClientError;
-use crate::error::Result;
+use crate::error::postgres::PostgresClientError;
 use crate::storage::postgres::db::TokenMetadataDb;
-
-#[async_trait::async_trait]
-pub trait PostgresStorage {
-  fn new(pg_pool: Arc<PostgresPool>) -> Self
-  where
-    Self: Sized;
-  async fn health_check(&self) -> Result<()>;
-  async fn initialize(&self) -> Result<()>;
-}
+use crate::storage::postgres::graph::GraphDb;
+use crate::storage::postgres::time_series::TimeSeriesDb;
 
 pub type PostgresPool = Pool<PostgresConnectionManager<MakeTlsConnector>>;
 
 #[derive(Debug, Clone)]
 pub struct PostgresClient {
-  pub pool: Arc<PostgresPool>,
-  pub db:   Arc<TokenMetadataDb>,
-  // TODO: add graph which will be used by baseer
-  // pub graph: Arc<AddressRelationsGraphDb>,
-  // TODO: add time series which will be used by siraaj
-  // pub time_series: Arc<TokenPriceActivityDb>,
+  pub pool:        Arc<PostgresPool>,
+  pub db:          TokenMetadataDb,
+  pub time_series: TimeSeriesDb,
+  pub graph:       GraphDb,
 }
 
-// this file is for normal postgres db
+#[async_trait::async_trait]
+pub trait PostgresStorage: Send + Sync {
+  fn new(pool: Arc<PostgresPool>) -> Self;
+  async fn health_check(&self) -> Result<()>;
+  async fn initialize(&self) -> Result<()>;
+}
+
 #[instrument(level = "debug", skip(config))]
 pub async fn make_postgres_client(
   engine_name: &str,
@@ -111,9 +108,21 @@ pub async fn make_postgres_client(
 
   let pool = Arc::new(pool);
 
-  info!("postgres::connection_established");
+  let token_metadata_db = TokenMetadataDb::new(pool.clone());
+  let time_series_db = TimeSeriesDb::new(pool.clone());
+  let graph_db = GraphDb::new(pool.clone());
 
-  let db = Arc::new(TokenMetadataDb::new(pool.clone()));
+  // Initialize database schema
+  token_metadata_db.initialize().await?;
+  time_series_db.initialize().await?;
+  graph_db.initialize().await?;
 
-  Ok(Arc::new(PostgresClient { pool, db }))
+  info!("{}::postgres_client::connection_established", engine_name);
+
+  Ok(Arc::new(PostgresClient {
+    pool,
+    db: token_metadata_db,
+    time_series: time_series_db,
+    graph: graph_db,
+  }))
 }

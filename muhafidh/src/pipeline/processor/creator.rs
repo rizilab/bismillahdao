@@ -38,6 +38,7 @@ impl CreatorInstructionProcessor {
     mint_address: Pubkey,
     creator_handler: Arc<CreatorHandlerOperator>,
     cancellation_token: CancellationToken,
+    max_depth: usize,
   ) -> Self {
     let visited_addresses = HashMap::new();
     let queue = VecDeque::new();
@@ -52,7 +53,7 @@ impl CreatorInstructionProcessor {
       cancellation_token,
       visited_addresses,
       queue,
-      max_depth: 10,
+      max_depth,
       processed_cex: HashSet::new(),
       connection_graph,
     }

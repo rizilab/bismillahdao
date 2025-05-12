@@ -118,14 +118,20 @@ impl Baseer {
         };
         let rpc_url = baseer.config.rpc.get_http_url();
         let creator_handler = creator_handler.clone();
+        let max_depth = baseer.config.creator_analyzer.max_depth;
         creator_stream
           .map(|token| {
             let child_token = cancellation_token.child_token();
             let rpc_url = rpc_url.clone();
             let creator_handler = creator_handler.clone();
             async move {
-              let mut pipeline =
-                make_creator_crawler_pipeline(rpc_url, creator_handler.clone(), token.clone(), child_token.clone())?;
+              let mut pipeline = make_creator_crawler_pipeline(
+                rpc_url,
+                creator_handler.clone(),
+                token.clone(),
+                child_token.clone(),
+                max_depth,
+              )?;
 
               tokio::select! {
                   result = pipeline.run() => {
@@ -186,17 +192,54 @@ impl Baseer {
     tokio::spawn(async move {
       let mut subscriber = baseer.db.redis.queue.pubsub.as_ref().write().await;
 
-      // Subscribe to the channel
-      subscriber.subscribe("new_token_created").await.map_err(|e| {
-        error!("failed_to_subscribe_to_new_token_created: {}", e);
-        err_with_loc!(RedisClientError::SubscribeError(format!("failed_to_subscribe_to_new_token_created: {}", e)))
-      })?;
+      // Subscribe to the channel with a retry mechanism
+      let mut retries = 0;
+      const MAX_RETRIES: usize = 5;
+
+      loop {
+        match subscriber.subscribe("new_token_created").await {
+          Ok(_) => {
+            info!("Successfully subscribed to new_token_created channel");
+            break;
+          },
+          Err(e) => {
+            retries += 1;
+            error!("Failed to subscribe to new_token_created (attempt {}/{}): {}", retries, MAX_RETRIES, e);
+
+            if retries >= MAX_RETRIES {
+              return Err(err_with_loc!(RedisClientError::SubscribeError(format!(
+                "failed_to_subscribe_to_new_token_created after {} attempts: {}",
+                MAX_RETRIES, e
+              ))));
+            }
+
+            // Exponential backoff
+            tokio::time::sleep(Duration::from_millis(100 * 2u64.pow(retries as u32))).await;
+          },
+        }
+      }
+
+      // Create a larger channel for buffering messages (to handle bursts)
+      let (buffer_tx, mut buffer_rx) = mpsc::channel::<NewTokenCache>(1000);
 
       // Process messages
       let mut msg_stream = subscriber.on_message();
 
       // Create a future that completes when shutdown is signaled
       let shutdown_future = shutdown_signal.wait_for_shutdown();
+
+      // Spawn a task to handle the message buffer
+      let buffer_task = tokio::spawn(async move {
+        while let Some(token) = buffer_rx.recv().await {
+          match sender.send(token).await {
+            Ok(_) => debug!("Token sent to processor"),
+            Err(e) => {
+              error!("Failed to send token to processor: {}", e);
+              return;
+            },
+          }
+        }
+      });
 
       // Process messages until shutdown
       tokio::select! {
@@ -209,14 +252,20 @@ impl Baseer {
                   match msg_stream.next().await {
                       Some(msg) => {
                           if let Ok(payload) = msg.get_payload::<String>() {
-                              if let Ok(token) = serde_json::from_str::<NewTokenCache>(&payload) {
-                                  debug!("new_token_received: {}", token.mint);
-                                  if let Err(e) = sender.try_send(token) {
-                                      error!("failed_to_send_token: {}", e);
-                                      let _ = shutdown_tx.send(()).await;
-                                      break;
+                              match serde_json::from_str::<NewTokenCache>(&payload) {
+                                  Ok(token) => {
+                                      debug!("new_token_received: {}", token.mint);
+                                      // Send to buffer instead of directly to processor
+                                      if let Err(e) = buffer_tx.send(token).await {
+                                          error!("Failed to buffer token: {}", e);
+                                      }
+                                  },
+                                  Err(e) => {
+                                      error!("Failed to parse token payload: {}", e);
                                   }
                               }
+                          } else {
+                              error!("Failed to get payload from message");
                           }
                       }
                       None => {
@@ -230,6 +279,10 @@ impl Baseer {
               info!("Token analyzer message stream ended");
           }
       }
+
+      // Clean up the buffer task
+      buffer_task.abort();
+
       Ok(())
     })
   }

@@ -68,22 +68,11 @@ impl CreatorCexConnectionGraph {
 
   pub fn get_edge_count(&self) -> usize { self.graph.edge_count() }
 
-  // For serialization/deserialization
-  pub fn to_bytes(&self) -> Vec<u8> { serde_json::to_vec(&self.graph).unwrap_or_default() }
+  // Get all nodes in the graph
+  pub fn get_nodes(&self) -> Vec<AddressNode> { self.graph.node_weights().map(|node| node.clone()).collect() }
 
-  pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-    let graph: Graph<AddressNode, TransactionEdge> = serde_json::from_slice(bytes).ok()?;
-    let mut node_indices = HashMap::new();
-
-    // Rebuild node indices
-    for node_idx in graph.node_indices() {
-      if let Some(node) = graph.node_weight(node_idx) {
-        node_indices.insert(node.address, node_idx);
-      }
-    }
-
-    Some(Self { graph, node_indices })
-  }
+  // Get all edges in the graph
+  pub fn get_edges(&self) -> Vec<TransactionEdge> { self.graph.edge_weights().map(|edge| edge.clone()).collect() }
 }
 
 // Thread-safe wrapper for the graph

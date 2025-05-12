@@ -8,6 +8,7 @@ use tracing::error;
 use tracing::info;
 
 use super::CreatorHandler;
+use crate::config::load_config;
 use crate::err_with_loc;
 use crate::error::HandlerError;
 use crate::handler::shutdown::ShutdownSignal;
@@ -67,6 +68,28 @@ impl CreatorHandlerMetadata {
       .update_token_cex_sources(&mint, &cex_sources, cex_updated_at)
       .await?;
 
+    // Record CEX activity for analytics
+    if let Err(e) = self
+      .db
+      .postgres
+      .db
+      .record_cex_activity(&cex.name.to_string(), &cex.address, &mint)
+      .await
+    {
+      error!("Failed to record CEX activity: {}", e);
+      // Continue despite the error
+    } else {
+      debug!("Recorded CEX activity for {} and mint {}", cex.name, mint);
+    }
+
+    // Store the connection graph in pgrouting
+    if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
+      error!("Failed to store connection graph in pgrouting: {}", e);
+      // Continue despite the error
+    } else {
+      info!("Stored connection graph in pgrouting for mint {}", mint);
+    }
+
     // Update Redis cache
     let token_key = mint.to_string();
     if let Ok(Some(mut token_metadata)) = self.db.redis.kv.get::<crate::model::token::TokenMetadata>(&token_key).await {
@@ -84,13 +107,28 @@ impl CreatorHandlerMetadata {
       error!("Failed to store connection graph in Redis: {}", e);
     }
 
+    // Store CEX information in Redis for quick access
+    let cex_key = format!("cex:{}", cex.address);
+    let cex_data = serde_json::json!({
+      "name": cex.name.to_string(),
+      "address": cex.address.to_string(),
+      "latest_mint": mint.to_string(),
+      "updated_at": cex_updated_at
+    });
+
+    if let Err(e) = self.db.redis.kv.set(&cex_key, &cex_data).await {
+      error!("Failed to store CEX data in Redis: {}", e);
+    }
+
     // Publish event
     let event_data = serde_json::json!({
-        "mint": mint.to_string(),
-        "cex_name": cex.name.to_string(),
-        "cex_address": cex.address.to_string(),
-        "creator": creator.to_string(),
-        "cex_updated_at": cex_updated_at
+      "mint": mint.to_string(),
+      "cex_name": cex.name.to_string(),
+      "cex_address": cex.address.to_string(),
+      "creator": creator.to_string(),
+      "cex_updated_at": cex_updated_at,
+      "node_count": connection_graph.get_node_count(),
+      "edge_count": connection_graph.get_edge_count()
     });
 
     if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
@@ -110,8 +148,12 @@ impl CreatorHandlerMetadata {
   ) -> Result<()> {
     info!("Processing BFS level {} for address {}, mint {}", depth, address, mint);
 
+    // Get configurable max depth
+    let config = load_config("Config.toml")?;
+    let max_bfs_depth = config.creator_analyzer.max_depth;
     // Skip if we've reached max depth
-    if depth >= 7 {
+    if depth >= max_bfs_depth {
+      info!("Reached maximum BFS depth ({}) for address {}", max_bfs_depth, address);
       return Ok(());
     }
 
@@ -139,7 +181,7 @@ impl CreatorHandlerMetadata {
     let handler = Arc::new(handler);
 
     let mut pipeline =
-      make_creator_crawler_pipeline(self.rpc_url.clone(), handler.clone(), token, child_token.clone())?;
+      make_creator_crawler_pipeline(self.rpc_url.clone(), handler.clone(), token, child_token.clone(), max_bfs_depth)?;
 
     // Run in background with proper cancellation handling
     tokio::spawn(async move {
