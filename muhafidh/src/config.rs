@@ -42,10 +42,10 @@ pub struct StorageRedisConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RpcConfig {
-  pub http_url: String,
-  pub ws_url:   String,
-  pub http_api_key:  String,
-  pub ws_api_key: String,
+  pub http_url:     String,
+  pub ws_url:       String,
+  pub http_api_key: String,
+  pub ws_api_key:   String,
 }
 
 impl RpcConfig {

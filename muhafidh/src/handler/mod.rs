@@ -1,2 +1,2 @@
-pub mod token;
 pub mod shutdown;
+pub mod token;

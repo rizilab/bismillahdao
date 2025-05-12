@@ -1,2 +1,2 @@
-pub mod pumpfun;
 pub mod creator;
+pub mod pumpfun;

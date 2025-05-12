@@ -16,11 +16,16 @@ use crate::storage::redis::make_redis_client;
 #[derive(Debug, Clone)]
 pub struct StorageEngine {
   pub postgres: Arc<PostgresClient>,
-  pub redis: Arc<RedisClient>,
+  pub redis:    Arc<RedisClient>,
 }
 
 impl StorageEngine {
-  pub fn new(postgres: Arc<PostgresClient>, redis: Arc<RedisClient>) -> Self { Self { postgres, redis } }
+  pub fn new(
+    postgres: Arc<PostgresClient>,
+    redis: Arc<RedisClient>,
+  ) -> Self {
+    Self { postgres, redis }
+  }
 }
 
 #[instrument(level = "info", skip(config))]

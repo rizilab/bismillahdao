@@ -1,7 +1,7 @@
 pub mod db;
 pub mod graph;
-pub mod time_series;
 pub mod model;
+pub mod time_series;
 
 use std::fs::File;
 use std::io::Read;
@@ -38,7 +38,7 @@ pub type PostgresPool = Pool<PostgresConnectionManager<MakeTlsConnector>>;
 #[derive(Debug, Clone)]
 pub struct PostgresClient {
   pub pool: Arc<PostgresPool>,
-  pub db: Arc<TokenMetadataDb>,
+  pub db:   Arc<TokenMetadataDb>,
   // TODO: add graph which will be used by baseer
   // pub graph: Arc<AddressRelationsGraphDb>,
   // TODO: add time series which will be used by siraaj
@@ -112,7 +112,7 @@ pub async fn make_postgres_client(
   let pool = Arc::new(pool);
 
   info!("postgres::connection_established");
-  
+
   let db = Arc::new(TokenMetadataDb::new(pool.clone()));
 
   Ok(Arc::new(PostgresClient { pool, db }))

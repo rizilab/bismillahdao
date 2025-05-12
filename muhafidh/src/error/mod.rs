@@ -1,18 +1,17 @@
 pub mod config;
-pub mod postgres;
-pub mod redis;
 pub mod engine;
 pub mod handler;
+pub mod postgres;
+pub mod redis;
 
 pub use anyhow::anyhow;
 pub use anyhow::Context;
 pub use anyhow::Error;
 pub use anyhow::Result;
-pub use postgres::PostgresClientError;
 pub use engine::EngineError;
-pub use redis::RedisClientError;
 pub use handler::HandlerError;
-
+pub use postgres::PostgresClientError;
+pub use redis::RedisClientError;
 use tracing::Event;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::format::Writer;
@@ -40,19 +39,12 @@ where
     let metadata = event.metadata();
     let file = metadata.file().unwrap_or("unknown");
     let line = metadata.line().unwrap_or(0);
-    
+
     if file == "unknown" && !cfg!(feature = "deep-trace") {
-        return Ok(());
+      return Ok(());
     }
-    
-    write!(
-      writer,
-      "{} {}::{}::{}::",
-      metadata.level(),
-      self.engine_name,
-      file,
-      line,
-    )?;
+
+    write!(writer, "{} {}::{}::{}::", metadata.level(), self.engine_name, file, line,)?;
 
     // Format the actual message
     ctx.field_format().format_fields(writer.by_ref(), event)?;
@@ -63,18 +55,14 @@ where
 
 pub fn setup_tracing(engine_name: &str) {
   let env_filter = if cfg!(feature = "deep-trace") {
-    
-    EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info".into())
-} else {
+    EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())
+  } else {
+    let base_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
 
-    let base_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info".into());
-    
     base_filter
-        .add_directive("muhafidh=info".parse().unwrap())
-        .add_directive("carbon_core=error".parse().unwrap())
-};
+      .add_directive("muhafidh=info".parse().unwrap())
+      .add_directive("carbon_core=error".parse().unwrap())
+  };
 
   tracing_subscriber::fmt()
     .with_env_filter(env_filter)
