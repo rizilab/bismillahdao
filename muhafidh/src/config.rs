@@ -50,9 +50,26 @@ pub struct RpcConfig {
   pub ws_api_key:   String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CreatorAnalyzerConfig {
+  #[serde(default = "default_max_depth")]
   pub max_depth: usize,
+
+  #[serde(default = "default_max_concurrent_requests")]
+  pub max_concurrent_requests: usize,
+}
+
+fn default_max_depth() -> usize { 10 }
+
+fn default_max_concurrent_requests() -> usize { 10 }
+
+impl Default for CreatorAnalyzerConfig {
+  fn default() -> Self {
+    Self {
+      max_depth:               default_max_depth(),
+      max_concurrent_requests: default_max_concurrent_requests(),
+    }
+  }
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -62,7 +62,7 @@ impl Baseer {
     let (sender, receiver) = mpsc::channel(1000);
 
     let new_token_creator_analyzer =
-      baseer.spawn_new_token_creator_analyzer(shutdown_tx.clone(), receiver, 10, cancellation_token.clone());
+      baseer.spawn_new_token_creator_analyzer(shutdown_tx.clone(), receiver, cancellation_token.clone());
 
     let new_token_subscriber = baseer.spawn_new_token_subscriber(shutdown_signal.clone(), shutdown_tx.clone(), sender);
 
@@ -101,11 +101,11 @@ impl Baseer {
     &self,
     shutdown_tx: mpsc::Sender<()>,
     mut receiver: mpsc::Receiver<NewTokenCache>,
-    max_concurrent_requests: usize,
     cancellation_token: CancellationToken,
   ) -> JoinHandle<Result<()>> {
     let baseer = self.clone();
     let creator_handler = self.creator_handler.clone();
+    let max_concurrent_requests = self.config.creator_analyzer.max_concurrent_requests;
 
     tokio::spawn(async move {
       let creator_handler = creator_handler.clone();

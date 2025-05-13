@@ -24,9 +24,21 @@ pub fn make_creator_crawler_pipeline(
 ) -> Result<Pipeline> {
   debug!("rpc_url: {}", rpc_url);
 
+  // Get max_concurrent_requests from config
+  let config = crate::config::load_config("Config.toml")?;
+  let max_concurrent_requests = config.creator_analyzer.max_concurrent_requests;
+
   let filters = Filters::new(None, None, None);
 
-  let rpc_crawler = RpcTransactionAnalyzer::new(rpc_url, token.creator, 500, Duration::from_secs(1), filters, None, 10);
+  let rpc_crawler = RpcTransactionAnalyzer::new(
+    rpc_url,
+    token.creator,
+    500,
+    Duration::from_secs(1),
+    filters,
+    None,
+    max_concurrent_requests,
+  );
 
   let mut processor =
     CreatorInstructionProcessor::new(token.mint, creator_handler.clone(), cancellation_token.clone(), max_depth);

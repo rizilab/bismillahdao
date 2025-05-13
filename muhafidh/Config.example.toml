@@ -19,6 +19,12 @@ http_url = ""
 ws_url = ""
 api_key = ""
 
+[creator_analyzer]
+# Maximum BFS depth level for analyzing connections (default: 10)
+max_depth = 10
+# Maximum concurrent requests for transaction fetch operations (default: 10)
+max_concurrent_requests = 5
+
 [logging]
 # Set log directory (default: .logs)
 # Three separate directories will be created:
