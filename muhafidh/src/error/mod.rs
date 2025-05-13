@@ -15,6 +15,8 @@ pub use handler::HandlerError;
 pub use postgres::PostgresClientError;
 pub use redis::RedisClientError;
 use tracing::Event;
+use tracing::Level;
+use tracing::Metadata;
 use tracing_appender::rolling::RollingFileAppender;
 use tracing_appender::rolling::Rotation;
 use tracing_subscriber::filter::EnvFilter;
@@ -22,11 +24,45 @@ use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::FormatEvent;
 use tracing_subscriber::fmt::FormatFields;
+use tracing_subscriber::layer::Context as LayerContext;
+use tracing_subscriber::layer::Filter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::config::load_config;
 use crate::config::LoggingConfig;
+
+// Custom filter for exact debug level matching
+struct DebugOnlyFilter;
+
+impl<S> Filter<S> for DebugOnlyFilter
+where
+  S: tracing::Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
+  fn enabled(
+    &self,
+    meta: &Metadata<'_>,
+    _ctx: &LayerContext<'_, S>,
+  ) -> bool {
+    meta.level() == &Level::DEBUG
+  }
+}
+
+// Custom filter for error and warn levels
+struct ErrorWarnFilter;
+
+impl<S> Filter<S> for ErrorWarnFilter
+where
+  S: tracing::Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
+  fn enabled(
+    &self,
+    meta: &Metadata<'_>,
+    _ctx: &LayerContext<'_, S>,
+  ) -> bool {
+    meta.level() == &Level::ERROR || meta.level() == &Level::WARN
+  }
+}
 
 struct MuhafidhFormat {
   engine_name: String,
@@ -106,22 +142,19 @@ pub fn setup_tracing(engine_name: &str) {
   static mut DEBUG_GUARD: Option<tracing_appender::non_blocking::WorkerGuard> = None;
   static mut ERROR_GUARD: Option<tracing_appender::non_blocking::WorkerGuard> = None;
 
-  // Create filter for terminal (only INFO)
+  // Create filters with proper level directives
+  // info and above (info, warn, error)
   let terminal_filter = EnvFilter::builder().parse_lossy("info");
 
-  // Create filter for each log file
+  // info and above (info, warn, error)
   let info_filter = EnvFilter::builder().parse_lossy("info");
-
-  let debug_filter = EnvFilter::builder().parse_lossy("debug");
-
-  let error_filter = EnvFilter::builder().parse_lossy("warn,error");
 
   // Create the custom format for all outputs
   let format = MuhafidhFormat { engine_name: engine_name.to_string() };
 
   // Set up the registry with all outputs
   let subscriber = tracing_subscriber::registry()
-    // Terminal output with custom MuhafidhFormat - INFO only
+    // Terminal output with custom MuhafidhFormat - INFO and above
     .with(
       tracing_subscriber::fmt::Layer::default()
         .with_ansi(true)
@@ -131,7 +164,7 @@ pub fn setup_tracing(engine_name: &str) {
         .event_format(format.clone())
         .with_filter(terminal_filter),
     )
-    // INFO log file
+    // INFO log file - info and above
     .with(
       tracing_subscriber::fmt::Layer::default()
         .with_ansi(false)
@@ -142,7 +175,7 @@ pub fn setup_tracing(engine_name: &str) {
         .with_writer(non_blocking_info)
         .with_filter(info_filter),
     )
-    // DEBUG log file
+    // DEBUG log file - debug only using custom filter
     .with(
       tracing_subscriber::fmt::Layer::default()
         .with_ansi(false)
@@ -151,9 +184,9 @@ pub fn setup_tracing(engine_name: &str) {
         .with_target(false)
         .event_format(format.clone())
         .with_writer(non_blocking_debug)
-        .with_filter(debug_filter),
+        .with_filter(DebugOnlyFilter),
     )
-    // ERROR log file
+    // ERROR log file - warn and error only
     .with(
       tracing_subscriber::fmt::Layer::default()
         .with_ansi(false)
@@ -162,7 +195,7 @@ pub fn setup_tracing(engine_name: &str) {
         .with_target(false)
         .event_format(format.clone())
         .with_writer(non_blocking_error)
-        .with_filter(error_filter),
+        .with_filter(ErrorWarnFilter),
     );
 
   // Set the subscriber as the global default
