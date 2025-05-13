@@ -15,6 +15,7 @@ pub struct Config {
   pub storage_redis:    StorageRedisConfig,
   pub rpc:              RpcConfig,
   pub creator_analyzer: CreatorAnalyzerConfig,
+  pub logging:          LoggingConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,6 +53,16 @@ pub struct RpcConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatorAnalyzerConfig {
   pub max_depth: usize,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LoggingConfig {
+  // Directory where logs will be stored
+  pub directory: Option<String>,
+}
+
+impl Default for LoggingConfig {
+  fn default() -> Self { Self { directory: Some(".logs".to_string()) } }
 }
 
 impl RpcConfig {

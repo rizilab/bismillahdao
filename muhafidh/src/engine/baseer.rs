@@ -36,7 +36,6 @@ impl Baseer {
     info!("Starting Baseer (بصير): The Analyzer");
 
     setup_tracing("baseer");
-    info!("setup_tracing");
 
     let config = load_config("Config.toml")?;
 

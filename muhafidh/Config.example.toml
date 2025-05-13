@@ -18,3 +18,11 @@ user = ""
 http_url = ""
 ws_url = ""
 api_key = ""
+
+[logging]
+# Set log directory (default: .logs)
+# Three separate directories will be created:
+# - .logs/ - for INFO level logs
+# - .logs/debug/ - for DEBUG level logs
+# - .logs/error/ - for WARN and ERROR level logs
+directory = ".logs"

@@ -28,7 +28,6 @@ impl Raqib {
     info!("Starting Raqib (رقيب): The Watchful Guardian");
 
     setup_tracing("raqib");
-    info!("setup_tracing");
 
     let config = load_config("Config.toml")?;
 

@@ -183,7 +183,10 @@ impl CreatorHandlerMetadata {
     // Store connection graph in Redis for BFS level
     let graph_key = format!("bfs_connection_graph:{}:{}", mint, depth);
     if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
-      error!("store_bfs_connection_graph_redis_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
+      error!(
+        "store_bfs_connection_graph_redis_failed::address::{}::depth::{}::mint::{}::error::{}",
+        address, depth, mint, e
+      );
     }
 
     let handler = Arc::new(handler);
@@ -197,10 +200,10 @@ impl CreatorHandlerMetadata {
           result = pipeline.run() => {
               match result {
                   Ok(_) => {
-                      info!("bfs_pipeline_completed::address::{}::depth::{}::mint::{}", address, depth, mint);
+                      info!("bfs_completed::address::{}::depth::{}::mint::{}", address, depth, mint);
                   },
                   Err(e) => {
-                      error!("bfs_pipeline_error::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
+                      error!("bfs_error::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
                   }
               }
           },
@@ -228,14 +231,14 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                     if let Err(e) = creator_handler_metadata.process_cex_connection(
                         cex.clone(), cex_connection, mint, creator
                     ).await {
-                        error!("process_cex_connection_failed::{}::to::{}::mint::{}::error::{}", cex.clone().name, creator, mint, e);
+                        error!("cex_failed::{}::to::{}::mint::{}::error::{}", cex.clone().name, creator, mint, e);
                     }
                 },
                 CreatorHandler::ProcessBfsLevel { address, depth, mint, connection_graph } => {
                     if let Err(e) = creator_handler_metadata.process_bfs_level(
                         address, depth, mint, connection_graph
                     ).await {
-                        error!("process_bfs_level_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
+                        error!("bfs_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
                     }
                 }
             }
@@ -348,7 +351,10 @@ impl CreatorHandlerOperator {
         Ok(())
       },
       Err(e) => {
-        error!("bfs_level_processing_request_send_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
+        error!(
+          "bfs_level_processing_request_send_failed::address::{}::depth::{}::mint::{}::error::{}",
+          address, depth, mint, e
+        );
         Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!("Failed to send BFS level request: {}", e))))
       },
     }

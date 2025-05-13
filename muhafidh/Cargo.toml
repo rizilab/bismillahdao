@@ -22,10 +22,14 @@ async-trait = "0.1.83"
 async-stream = "0.3.6"
 dotenvy = "0.15.7"
 clap = { version = "4.5.28", features = ["derive"] }
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 petgraph = { version = "0.8.1", features = ["serde-1"] }
 toml = "0.8.22"
+
+# Logging
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
+tracing-appender = "0.2.2"
+
 # Database
 bb8 = "0.9.0"
 bb8-postgres = "0.9.0"
