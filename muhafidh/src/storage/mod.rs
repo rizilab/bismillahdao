@@ -8,6 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use postgres::PostgresClient;
 use redis::RedisClient;
+use tracing::error;
 use tracing::info;
 use tracing::instrument;
 
@@ -36,6 +37,12 @@ impl StorageEngine {
     migrator.run_migrations().await?;
     Ok(())
   }
+
+  // Check if the database schema is at the expected version
+  pub async fn check_schema_version(&self) -> Result<bool> {
+    let migrator = Migrator::new(self.postgres.pool.clone());
+    migrator.check_schema_version().await
+  }
 }
 
 #[instrument(level = "info", skip(config))]
@@ -50,9 +57,31 @@ pub async fn make_storage_engine(
 
   let storage = StorageEngine::new(postgres, redis);
 
-  // Run migrations
-  storage.run_migrations().await?;
-  info!("migrations::completed");
+  // Check schema version instead of running migrations
+  let schema_valid = storage.check_schema_version().await?;
+  if !schema_valid {
+    error!("Database schema version mismatch. Please run migrations before starting services.");
+    // You could choose to panic here or continue with a warning
+    // panic!("Database schema version mismatch. Please run migrations before starting services.");
+  }
 
+  info!("schema_version::checked");
   Ok(storage)
+}
+
+// Create a special function for the migration CLI tool
+#[instrument(level = "info", skip(config))]
+pub async fn run_database_migrations(
+  engine_name: &str,
+  config: &Config,
+) -> Result<()> {
+  let postgres = make_postgres_client(engine_name, &config.storage_postgres).await?;
+  info!("postgres::created_for_migration");
+
+  let migrator = Migrator::new(postgres.pool.clone());
+  info!("Starting database migrations...");
+  migrator.run_migrations().await?;
+  info!("Database migrations completed successfully");
+
+  Ok(())
 }

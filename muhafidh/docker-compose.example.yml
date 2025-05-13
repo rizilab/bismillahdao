@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # Database services
+  postgres:
+    image: postgis/postgis:15-3.3
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: muhafidh
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Migration service - runs before other services
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /app/migrate
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Application services
+  raqib:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /app/raqib
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  baseer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /app/baseer
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  siraaj:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /app/siraaj
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
+  redis_data: 

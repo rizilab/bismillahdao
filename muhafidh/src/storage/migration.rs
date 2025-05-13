@@ -4,10 +4,14 @@ use anyhow::Result;
 use chrono::Utc;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 use crate::err_with_loc;
 use crate::error::postgres::PostgresClientError;
 use crate::storage::postgres::PostgresPool;
+
+/// Current schema version - increment this when adding new migrations
+pub const CURRENT_SCHEMA_VERSION: i64 = 17;
 
 /// A migration that can be applied to the database
 pub struct Migration {
@@ -45,6 +49,26 @@ impl Migrator {
     }
 
     Ok(())
+  }
+
+  /// Check if the database schema is at the expected version without applying migrations
+  pub async fn check_schema_version(&self) -> Result<bool> {
+    self.create_migrations_table().await?;
+    let applied = self.get_applied_migrations().await?;
+
+    // Get the highest applied migration version
+    let current_version = applied.iter().max().copied().unwrap_or(0);
+
+    if current_version < CURRENT_SCHEMA_VERSION {
+      warn!(
+        "Database schema version mismatch. Expected {}, found {}. Please run migrations.",
+        CURRENT_SCHEMA_VERSION, current_version
+      );
+      return Ok(false);
+    }
+
+    info!("Database schema version check passed. Current version: {}", current_version);
+    Ok(true)
   }
 
   /// Create the migrations table if it doesn't exist
