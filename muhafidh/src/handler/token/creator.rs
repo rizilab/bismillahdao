@@ -51,7 +51,7 @@ impl CreatorHandlerMetadata {
     mint: Pubkey,
     creator: Pubkey,
   ) -> Result<()> {
-    info!("Processing CEX connection: {} to creator {} for mint {}", cex.name, creator, mint);
+    info!("process_cex_connection::{}::to::{}::mint::{}", cex.name, creator, mint);
 
     // Update the token record with CEX source
     let cex_sources = vec![cex.address];
@@ -76,18 +76,18 @@ impl CreatorHandlerMetadata {
       .record_cex_activity(&cex.name.to_string(), &cex.address, &mint)
       .await
     {
-      error!("Failed to record CEX activity: {}", e);
+      error!("record_cex_activity_postgres_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
       // Continue despite the error
     } else {
-      debug!("Recorded CEX activity for {} and mint {}", cex.name, mint);
+      debug!("record_cex_activity_postgres_success::{}::to::{}::mint::{}", cex.name, creator, mint);
     }
 
     // Store the connection graph in pgrouting
     if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
-      error!("Failed to store connection graph in pgrouting: {}", e);
+      error!("store_connection_graph_pgrouting_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
       // Continue despite the error
     } else {
-      info!("Stored connection graph in pgrouting for mint {}", mint);
+      debug!("store_connection_graph_pgrouting_success::{}::to::{}::mint::{}", cex.name, creator, mint);
     }
 
     // Update Redis cache
@@ -97,14 +97,18 @@ impl CreatorHandlerMetadata {
       token_metadata.cex_updated_at = Some(cex_updated_at);
 
       if let Err(e) = self.db.redis.kv.set(&token_key, &token_metadata).await {
-        error!("Failed to update token in Redis: {}", e);
+        error!("update_token_redis_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
+      } else {
+        debug!("update_token_redis_success::{}::to::{}::mint::{}", cex.name, creator, mint);
       }
     }
 
     // Store connection graph in Redis
     let graph_key = format!("developer_connection_graph:{}", mint);
     if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
-      error!("Failed to store connection graph in Redis: {}", e);
+      error!("store_connection_graph_redis_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
+    } else {
+      debug!("store_connection_graph_redis_success::{}::to::{}::mint::{}", cex.name, creator, mint);
     }
 
     // Store CEX information in Redis for quick access
@@ -117,7 +121,9 @@ impl CreatorHandlerMetadata {
     });
 
     if let Err(e) = self.db.redis.kv.set(&cex_key, &cex_data).await {
-      error!("Failed to store CEX data in Redis: {}", e);
+      error!("store_cex_data_redis_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
+    } else {
+      debug!("store_cex_data_redis_success::{}::to::{}::mint::{}", cex.name, creator, mint);
     }
 
     // Publish event
@@ -132,10 +138,12 @@ impl CreatorHandlerMetadata {
     });
 
     if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
-      error!("Failed to publish token_cex_updated event: {}", e);
+      error!("publish_token_cex_updated_event_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
+    } else {
+      debug!("publish_token_cex_updated_event_success::{}::to::{}::mint::{}", cex.name, creator, mint);
     }
 
-    info!("CEX connection processing completed for mint {}", mint);
+    info!("process_cex_connection_completed::{}::to::{}::mint::{}", cex.name, creator, mint);
     Ok(())
   }
 
@@ -146,14 +154,14 @@ impl CreatorHandlerMetadata {
     mint: Pubkey,
     connection_graph: CreatorCexConnectionGraph,
   ) -> Result<()> {
-    info!("Processing BFS level {} for address {}, mint {}", depth, address, mint);
+    debug!("process_bfs_level::address::{}::depth::{}::mint::{}", address, depth, mint);
 
     // Get configurable max depth
     let config = load_config("Config.toml")?;
     let max_bfs_depth = config.creator_analyzer.max_depth;
     // Skip if we've reached max depth
     if depth >= max_bfs_depth {
-      info!("Reached maximum BFS depth ({}) for address {}", max_bfs_depth, address);
+      info!("process_bfs_level_reached_max_depth::address::{}::depth::{}::mint::{}", address, depth, mint);
       return Ok(());
     }
 
@@ -175,7 +183,7 @@ impl CreatorHandlerMetadata {
     // Store connection graph in Redis for BFS level
     let graph_key = format!("bfs_connection_graph:{}:{}", mint, depth);
     if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
-      error!("Failed to store BFS connection graph in Redis: {}", e);
+      error!("store_bfs_connection_graph_redis_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
     }
 
     let handler = Arc::new(handler);
@@ -189,15 +197,15 @@ impl CreatorHandlerMetadata {
           result = pipeline.run() => {
               match result {
                   Ok(_) => {
-                      info!("BFS pipeline completed for address {} at depth {}", address, depth);
+                      info!("bfs_pipeline_completed::address::{}::depth::{}::mint::{}", address, depth, mint);
                   },
                   Err(e) => {
-                      error!("BFS pipeline error for address {}: {}", address, e);
+                      error!("bfs_pipeline_error::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
                   }
               }
           },
           _ = child_token.cancelled() => {
-              info!("Cancelling BFS pipeline for address {} at depth {}", address, depth);
+              debug!("cancelling_bfs_pipeline::address::{}::depth::{}::mint::{}", address, depth, mint);
           }
       }
     });
@@ -207,37 +215,37 @@ impl CreatorHandlerMetadata {
 }
 
 async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandlerMetadata) {
-  info!("Creator handler metadata started");
+  info!("creator_handler_metadata::started");
 
   loop {
     tokio::select! {
         Some(msg) = creator_handler_metadata.receiver.recv() => {
             match msg {
                 CreatorHandler::StoreCreator { creator_metadata } => {
-                    info!("store_creator_metadata: {}", creator_metadata.address);
+                    info!("store_creator_metadata::{}", creator_metadata.address);
                 },
                 CreatorHandler::CexConnection { cex, cex_connection, mint, creator } => {
                     if let Err(e) = creator_handler_metadata.process_cex_connection(
-                        cex, cex_connection, mint, creator
+                        cex.clone(), cex_connection, mint, creator
                     ).await {
-                        error!("Failed to process CEX connection: {}", e);
+                        error!("process_cex_connection_failed::{}::to::{}::mint::{}::error::{}", cex.clone().name, creator, mint, e);
                     }
                 },
                 CreatorHandler::ProcessBfsLevel { address, depth, mint, connection_graph } => {
                     if let Err(e) = creator_handler_metadata.process_bfs_level(
                         address, depth, mint, connection_graph
                     ).await {
-                        error!("Failed to process BFS level: {}", e);
+                        error!("process_bfs_level_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
                     }
                 }
             }
         },
         _ = creator_handler_metadata.shutdown.wait_for_shutdown() => {
-            info!("creator_handler_metadata::received_shutdown_signal");
+            debug!("creator_handler_metadata::received_shutdown_signal");
             break;
         },
         else => {
-            info!("creator_handler_metadata::all_senders_dropped");
+            debug!("creator_handler_metadata::all_senders_dropped");
             break;
         }
     }
@@ -277,7 +285,7 @@ impl CreatorHandlerOperator {
     mint: Pubkey,
     creator: Pubkey,
   ) -> Result<()> {
-    debug!("Recording CEX connection from {} to {}", cex.name, creator);
+    debug!("record_cex_connection::{}::to:: {}", cex.name, creator);
 
     // Record the CEX connection directly in the database
     let cex_sources = vec![cex.address];
@@ -295,27 +303,27 @@ impl CreatorHandlerOperator {
       .await
     {
       Ok(_) => {
-        debug!("Recorded CEX connection in PostgreSQL for mint {}", mint);
+        debug!("record_cex_connection_postgres_success::{}::to::{}", cex.clone().name, creator);
       },
       Err(e) => {
-        error!("Failed to record CEX connection in PostgreSQL: {}", e);
+        error!("record_cex_connection_postgres_failed::{}::to::{}::error::{}", cex.clone().name, creator, e);
         // Continue processing despite the error
       },
     }
 
     // Use try_send for backpressure handling
     match self.sender.try_send(CreatorHandler::CexConnection {
-      cex,
+      cex: cex.clone(),
       cex_connection: connection_graph,
       mint,
       creator,
     }) {
       Ok(()) => {
-        debug!("CEX connection sent for processing");
+        debug!("cex_connection_sent_for_processing::{}::to::{}::mint::{}", cex.clone().name, creator, mint);
         Ok(())
       },
       Err(e) => {
-        error!("Failed to send CEX connection: {}", e);
+        error!("cex_connection_send_failed::{}::to::{}::mint::{}::error::{}", cex.clone().name, creator, mint, e);
         Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!("Failed to send CEX connection: {}", e))))
       },
     }
@@ -328,7 +336,7 @@ impl CreatorHandlerOperator {
     mint: Pubkey,
     connection_graph: CreatorCexConnectionGraph,
   ) -> Result<()> {
-    debug!("Processing BFS level {} for address {}", depth, address);
+    debug!("process_next_bfs_level::address::{}::depth::{}::mint::{}", address, depth, mint);
 
     // Use try_send for backpressure handling
     match self
@@ -336,11 +344,11 @@ impl CreatorHandlerOperator {
       .try_send(CreatorHandler::ProcessBfsLevel { address, depth, mint, connection_graph })
     {
       Ok(()) => {
-        debug!("BFS level processing request sent");
+        debug!("bfs_level_processing_request_sent::address::{}::depth::{}::mint::{}", address, depth, mint);
         Ok(())
       },
       Err(e) => {
-        error!("Failed to send BFS level processing request: {}", e);
+        error!("bfs_level_processing_request_send_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
         Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!("Failed to send BFS level request: {}", e))))
       },
     }
