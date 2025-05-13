@@ -1,10 +1,19 @@
 # Use a Debian-based Postgres image as the base
 FROM postgres:17
 
+# Add PostgreSQL repository for PostGIS and pgRouting
+RUN apt-get update \
+    && apt-get install -y gnupg2 lsb-release curl \
+    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
 # Install build-essential tools and required packages
 RUN apt-get update && \
-    apt-get install -y build-essential curl wget git jq cmake gnupg postgresql-common apt-transport-https lsb-release protobuf-c-compiler libprotobuf-c-dev postgresql-server-dev-17 libkrb5-dev && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y build-essential wget git jq cmake gnupg postgresql-common apt-transport-https \
+    protobuf-c-compiler libprotobuf-c-dev postgresql-server-dev-17 libkrb5-dev \
+    # Install PostGIS and pgRouting from packages
+    postgresql-17-postgis-3 postgresql-17-pgrouting \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Clone timescaledb source code from GitHub
 RUN git clone https://github.com/timescale/timescaledb && \
@@ -14,6 +23,7 @@ RUN git clone https://github.com/timescale/timescaledb && \
     cd build && make && \
     make install
 
+# Install pgvector extension
 RUN cd /tmp && \
     git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git && \
     cd pgvector && \
@@ -25,7 +35,6 @@ RUN echo "shared_preload_libraries = 'timescaledb,vector'" >> /usr/share/postgre
 
 # Add pgcrypto to PostgreSQL configuration
 # RUN echo "local_preload_libraries = 'pgcrypto'" >> /usr/share/postgresql/postgresql.custom.conf
-
 
 # Create a custom PostgreSQL configuration file
 COPY docker/volumes/timescaledb/postgresql.custom.conf /etc/postgresql/postgresql.conf
