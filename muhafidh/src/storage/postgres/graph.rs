@@ -11,7 +11,6 @@ use std::sync::Arc;
 use solana_pubkey::Pubkey;
 use tracing::debug;
 use tracing::error;
-use tracing::info;
 
 use crate::err_with_loc;
 use crate::error::postgres::PostgresClientError;
@@ -42,87 +41,10 @@ impl PostgresStorage for GraphDb {
     Ok(())
   }
 
+  // No need to initialize tables here as this is now handled by migrations
   async fn initialize(&self) -> Result<()> {
-    let conn = self.pool.get().await.map_err(|e| {
-      error!("failed_to_get_client_pool_connection: {}", e);
-      err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_get_client_pool_connection: {}", e)))
-    })?;
-
-    // First check if PostGIS extension is installed
-    conn
-      .execute(
-        "CREATE EXTENSION IF NOT EXISTS postgis;
-         CREATE EXTENSION IF NOT EXISTS pgrouting;",
-        &[],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_create_extensions: {}", e);
-        err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_create_extensions: {}", e)))
-      })?;
-
-    // Create nodes table
-    conn
-      .execute(
-        "CREATE TABLE IF NOT EXISTS wallet_nodes (
-           id SERIAL PRIMARY KEY,
-           pubkey TEXT UNIQUE NOT NULL,
-           is_cex BOOLEAN NOT NULL,
-           cex_name TEXT,
-           total_received FLOAT DEFAULT 0.0,
-           total_balance FLOAT DEFAULT 0.0,
-           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-         )",
-        &[],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_create_nodes_table: {}", e);
-        err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_create_nodes_table: {}", e)))
-      })?;
-
-    // Create edges table with pgrouting requirements
-    conn
-      .execute(
-        "CREATE TABLE IF NOT EXISTS wallet_edges (
-           id SERIAL PRIMARY KEY,
-           source_id INTEGER REFERENCES wallet_nodes(id),
-           target_id INTEGER REFERENCES wallet_nodes(id),
-           source_pubkey TEXT NOT NULL,
-           target_pubkey TEXT NOT NULL,
-           cost FLOAT DEFAULT 1.0, -- Required by pgrouting
-           reverse_cost FLOAT DEFAULT -1.0, -- For directed graph
-           amount FLOAT NOT NULL,
-           timestamp BIGINT NOT NULL,
-           mint TEXT NOT NULL,
-           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-           UNIQUE(source_pubkey, target_pubkey, mint, timestamp)
-         )",
-        &[],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_create_edges_table: {}", e);
-        err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_create_edges_table: {}", e)))
-      })?;
-
-    // Create indexes
-    conn
-      .execute(
-        "CREATE INDEX IF NOT EXISTS idx_wallet_nodes_pubkey ON wallet_nodes(pubkey);
-         CREATE INDEX IF NOT EXISTS idx_wallet_edges_source_target ON wallet_edges(source_id, target_id);
-         CREATE INDEX IF NOT EXISTS idx_wallet_edges_pubkeys ON wallet_edges(source_pubkey, target_pubkey);
-         CREATE INDEX IF NOT EXISTS idx_wallet_edges_mint ON wallet_edges(mint);",
-        &[],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_create_indexes: {}", e);
-        err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_create_indexes: {}", e)))
-      })?;
-
-    info!("Graph database initialized");
-    Ok(())
+    // Just do a health check to ensure the database is available
+    self.health_check().await
   }
 }
 

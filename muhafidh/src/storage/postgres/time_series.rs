@@ -24,7 +24,6 @@
 use std::sync::Arc;
 
 use tracing::error;
-use tracing::info;
 
 use crate::err_with_loc;
 use crate::error::postgres::PostgresClientError;
@@ -54,66 +53,10 @@ impl PostgresStorage for TimeSeriesDb {
     Ok(())
   }
 
+  // No need to initialize tables here as this is now handled by migrations
   async fn initialize(&self) -> Result<()> {
-    let conn = self.pool.get().await.map_err(|e| {
-      error!("failed_to_get_client_pool_connection: {}", e);
-      err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_get_client_pool_connection: {}", e)))
-    })?;
-
-    // Create time series tables
-    conn
-      .execute(
-        "CREATE TABLE IF NOT EXISTS token_price_history (
-                   id SERIAL PRIMARY KEY,
-                   mint TEXT NOT NULL,
-                   price BIGINT NOT NULL,
-                   timestamp BIGINT NOT NULL,
-                   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                   UNIQUE(mint, timestamp)
-                 );
-        CREATE TABLE IF NOT EXISTS token_volume_history (
-                   id SERIAL PRIMARY KEY,
-                   mint TEXT NOT NULL,
-                   volume BIGINT NOT NULL,
-                   timestamp BIGINT NOT NULL,
-                   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                   UNIQUE(mint, timestamp)
-                 );
-        CREATE TABLE IF NOT EXISTS cex_activity_history (
-                   id SERIAL PRIMARY KEY,
-                   cex_address TEXT NOT NULL,
-                   token_count BIGINT NOT NULL,
-                   timestamp BIGINT NOT NULL,
-                   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                   UNIQUE(cex_address, timestamp)
-                 );",
-        &[],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_create_time_series_tables: {}", e);
-        err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_create_time_series_tables: {}", e)))
-      })?;
-
-    // Create indexes for time series tables
-    conn
-      .execute(
-        "CREATE INDEX IF NOT EXISTS idx_token_price_history_mint ON token_price_history(mint);
-                 CREATE INDEX IF NOT EXISTS idx_token_price_history_timestamp ON token_price_history(timestamp);
-                 CREATE INDEX IF NOT EXISTS idx_token_volume_history_mint ON token_volume_history(mint);
-                 CREATE INDEX IF NOT EXISTS idx_token_volume_history_timestamp ON token_volume_history(timestamp);
-                 CREATE INDEX IF NOT EXISTS idx_cex_activity_history_cex ON cex_activity_history(cex_address);
-                 CREATE INDEX IF NOT EXISTS idx_cex_activity_history_timestamp ON cex_activity_history(timestamp);",
-        &[],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_create_time_series_indexes: {}", e);
-        err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_create_time_series_indexes: {}", e)))
-      })?;
-
-    info!("Time series database initialized");
-    Ok(())
+    // Just do a health check to ensure the database is available
+    self.health_check().await
   }
 }
 

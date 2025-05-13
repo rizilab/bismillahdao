@@ -1,4 +1,5 @@
 pub mod in_memory;
+pub mod migration;
 pub mod postgres;
 pub mod redis;
 
@@ -11,8 +12,10 @@ use tracing::info;
 use tracing::instrument;
 
 use crate::config::Config;
+use crate::storage::migration::Migrator;
 use crate::storage::postgres::make_postgres_client;
 use crate::storage::redis::make_redis_client;
+
 #[derive(Debug, Clone)]
 pub struct StorageEngine {
   pub postgres: Arc<PostgresClient>,
@@ -26,6 +29,13 @@ impl StorageEngine {
   ) -> Self {
     Self { postgres, redis }
   }
+
+  // Run migrations on the storage engine
+  pub async fn run_migrations(&self) -> Result<()> {
+    let migrator = Migrator::new(self.postgres.pool.clone());
+    migrator.run_migrations().await?;
+    Ok(())
+  }
 }
 
 #[instrument(level = "info", skip(config))]
@@ -38,5 +48,11 @@ pub async fn make_storage_engine(
   let redis = make_redis_client(engine_name, &config.storage_redis).await?;
   info!("redis::created");
 
-  Ok(StorageEngine::new(postgres, redis))
+  let storage = StorageEngine::new(postgres, redis);
+
+  // Run migrations
+  storage.run_migrations().await?;
+  info!("migrations::completed");
+
+  Ok(storage)
 }
