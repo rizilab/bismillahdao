@@ -15,17 +15,17 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  // Initialize logging
-  setup_tracing("migrate");
+    // Initialize logging
+    setup_tracing("migrate");
 
-  info!("Database Migration Tool starting...");
+    info!("Database Migration Tool starting...");
 
-  // Load configuration
-  let config = load_config("Config.toml")?;
+    // Load configuration
+    let config = load_config("Config.toml")?;
 
-  // Run migrations
-  run_database_migrations("migration-tool", &config).await?;
+    // Run migrations
+    run_database_migrations("migration-tool", &config).await?;
 
-  info!("Database Migration Tool completed successfully");
-  Ok(())
+    info!("Database Migration Tool completed successfully");
+    Ok(())
 }

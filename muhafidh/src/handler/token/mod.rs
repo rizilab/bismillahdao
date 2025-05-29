@@ -1,36 +1,36 @@
 pub mod creator;
 pub mod metadata;
 
-use solana_pubkey::Pubkey;
+use std::sync::Arc;
 
+use solana_pubkey::Pubkey;
+use tokio_util::sync::CancellationToken;
+
+use crate::config::CreatorAnalyzerConfig;
 use crate::model::cex::Cex;
-use crate::model::creator::CreatorMetadata;
+use crate::model::creator::graph::SharedCreatorCexConnectionGraph;
+use crate::model::creator::metadata::CreatorMetadata;
 use crate::model::token::TokenMetadata;
-use crate::storage::in_memory::creator::CreatorCexConnectionGraph;
 
 pub enum TokenHandler {
-  StoreToken {
-    token_metadata: TokenMetadata,
-  },
-  UpdateBondedToken {
-    token_metadata: TokenMetadata,
-  },
+    StoreToken {
+        token_metadata: TokenMetadata,
+    },
+    UpdateBondedToken {
+        token_metadata: TokenMetadata,
+    },
 }
 
 pub enum CreatorHandler {
-  CexConnection {
-    cex:            Cex,
-    cex_connection: CreatorCexConnectionGraph,
-    mint:           Pubkey,
-    creator:        Pubkey,
-  },
-  StoreCreator {
-    creator_metadata: CreatorMetadata,
-  },
-  ProcessBfsLevel {
-    address:          Pubkey,
-    depth:            usize,
-    mint:             Pubkey,
-    connection_graph: CreatorCexConnectionGraph,
-  },
+    ProcessBfsLevel {
+        creator_metadata: Arc<CreatorMetadata>,
+        sender: Pubkey,
+        child_token: CancellationToken,
+        creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+    },
+    CexConnection {
+        cex: Cex,
+        cex_connection: SharedCreatorCexConnectionGraph,
+        mint: Pubkey,
+    },
 }

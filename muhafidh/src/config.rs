@@ -1,121 +1,83 @@
-use std::fs::File;
-use std::io::Read;
+use std::path::Path;
 
 use serde::Deserialize;
+use serde::Serialize;
 use toml;
-use tracing::error;
 
-use crate::err_with_loc;
-use crate::error::config::ConfigError;
-use crate::error::Result;
+use crate::rpc::config::RpcConfig;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-  pub storage_postgres: StoragePostgresConfig,
-  pub storage_redis:    StorageRedisConfig,
-  pub rpc:              RpcConfig,
-  pub creator_analyzer: CreatorAnalyzerConfig,
-  pub logging:          LoggingConfig,
+    pub storage_postgres: StoragePostgresConfig,
+    pub storage_redis: StorageRedisConfig,
+    pub rpc: RpcConfig,
+    pub creator_analyzer: CreatorAnalyzerConfig,
+    pub logging: LoggingConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoragePostgresConfig {
-  pub user:      String,
-  pub password:  String,
-  pub port:      u16,
-  pub host:      String,
-  pub pool_size: u32,
-  pub db_name:   String,
-  pub tls:       TlsConfig,
+    pub user: String,
+    pub password: String,
+    pub port: u16,
+    pub host: String,
+    pub pool_size: u32,
+    pub db_name: String,
+    pub tls: TlsConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TlsConfig {
-  pub client_identity_path: String,
-  pub ca_path:              String,
+    pub client_identity_path: String,
+    pub ca_path: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageRedisConfig {
-  pub host:      String,
-  pub port:      u16,
-  pub pool_size: u32,
+    pub host: String,
+    pub port: u16,
+    pub pool_size: u32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct RpcConfig {
-  pub http_url:     String,
-  pub ws_url:       String,
-  pub http_api_key: String,
-  pub ws_api_key:   String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatorAnalyzerConfig {
-  #[serde(default = "default_max_depth")]
-  pub max_depth: usize,
-
-  #[serde(default = "default_max_concurrent_requests")]
-  pub max_concurrent_requests: usize,
+    pub max_depth: usize,
+    pub max_concurrent_requests: usize,
+    pub max_signatures_to_check: usize,
+    pub base_retry_delay_ms: u64,
+    pub max_retry_delay_ms: u64,
+    pub max_retries: usize,
 }
-
-fn default_max_depth() -> usize { 10 }
-
-fn default_max_concurrent_requests() -> usize { 10 }
 
 impl Default for CreatorAnalyzerConfig {
-  fn default() -> Self {
-    Self {
-      max_depth:               default_max_depth(),
-      max_concurrent_requests: default_max_concurrent_requests(),
+    fn default() -> Self {
+        Self {
+            max_depth: 10,
+            max_concurrent_requests: 20,
+            max_signatures_to_check: 250,
+            base_retry_delay_ms: 500,
+            max_retry_delay_ms: 30_000,
+            max_retries: 5,
+        }
     }
-  }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LoggingConfig {
-  // Directory where logs will be stored
-  pub directory: Option<String>,
+    // Directory where logs will be stored
+    pub directory: Option<String>,
 }
 
 impl Default for LoggingConfig {
-  fn default() -> Self { Self { directory: Some(".logs".to_string()) } }
+    fn default() -> Self {
+        Self {
+            directory: Some(".logs".to_string()),
+        }
+    }
 }
 
-impl RpcConfig {
-  pub fn get_http_url(&self) -> String {
-    if !self.http_api_key.is_empty() {
-      format!("https://{}/{}", self.http_url, self.http_api_key)
-    } else {
-      format!("https://{}/", self.http_url)
-    }
-  }
-
-  pub fn get_ws_url(&self) -> String {
-    if !self.ws_api_key.is_empty() {
-      format!("wss://{}/{}", self.ws_url, self.ws_api_key)
-    } else {
-      format!("wss://{}/", self.ws_url)
-    }
-  }
-}
-
-pub fn load_config(file_path: &str) -> Result<Config> {
-  let mut file = File::open(file_path).map_err(|e| {
-    error!("failed_to_open_config_file: {}", e);
-    err_with_loc!(ConfigError::OpenFileError(format!("failed_to_open_config_file: {}", e)))
-  })?;
-  let mut contents = String::new();
-
-  let _ = file.read_to_string(&mut contents).map_err(|e| {
-    error!("failed_to_load_config_file: {}", e);
-    err_with_loc!(ConfigError::LoadError(format!("failed_to_load_config_file: {}", e)))
-  })?;
-
-  let config: Config = toml::de::from_str(&contents).map_err(|e| {
-    error!("failed_to_parse_config_file: {}", e);
-    err_with_loc!(ConfigError::ParseError(format!("failed_to_parse_config_file: {}", e)))
-  })?;
-
-  Ok(config)
+pub fn load_config(path: impl AsRef<Path>) -> crate::Result<Config> {
+    let config_str = std::fs::read_to_string(path)?;
+    let config: Config = toml::from_str(&config_str)?;
+    Ok(config)
 }

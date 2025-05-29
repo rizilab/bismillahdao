@@ -1,3 +1,3 @@
 fn main() {
-  println!("PumpFun Monitor");
+    println!("PumpFun Monitor");
 }

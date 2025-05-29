@@ -8,357 +8,344 @@ use tracing::error;
 use tracing::info;
 
 use super::CreatorHandler;
-use crate::config::load_config;
+use crate::HandlerError;
+use crate::Result;
+use crate::config::CreatorAnalyzerConfig;
 use crate::err_with_loc;
-use crate::error::HandlerError;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::model::cex::Cex;
+use crate::model::creator::graph::SharedCreatorCexConnectionGraph;
+use crate::model::creator::metadata::CreatorMetadata;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
-use crate::storage::in_memory::creator::CreatorCexConnectionGraph;
-use crate::storage::redis::model::NewTokenCache;
+use crate::pipeline::processor::creator::CreatorInstructionProcessor;
+use crate::rpc::config::RpcConfig;
 use crate::storage::StorageEngine;
-use crate::Result;
 
 pub struct CreatorHandlerMetadata {
-  receiver:           mpsc::Receiver<CreatorHandler>,
-  db:                 Arc<StorageEngine>,
-  shutdown:           ShutdownSignal,
-  rpc_url:            String,
-  cancellation_token: CancellationToken,
-}
-
-impl CreatorHandlerMetadata {
-  pub fn new(
     receiver: mpsc::Receiver<CreatorHandler>,
     db: Arc<StorageEngine>,
     shutdown: ShutdownSignal,
-    rpc_url: String,
-    cancellation_token: CancellationToken,
-  ) -> Self {
-    Self {
-      receiver,
-      db,
-      shutdown,
-      rpc_url,
-      cancellation_token,
-    }
-  }
+    rpc_config: Arc<RpcConfig>,
+}
 
-  async fn process_cex_connection(
-    &self,
-    cex: Cex,
-    connection_graph: CreatorCexConnectionGraph,
-    mint: Pubkey,
-    creator: Pubkey,
-  ) -> Result<()> {
-    info!("process_cex_connection::{}::to::{}::mint::{}", cex.name, creator, mint);
-
-    // Update the token record with CEX source
-    let cex_sources = vec![cex.address];
-    let cex_updated_at = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_secs();
-
-    // Update in PostgreSQL
-    self
-      .db
-      .postgres
-      .db
-      .update_token_cex_sources(&mint, &cex_sources, cex_updated_at)
-      .await?;
-
-    // Record CEX activity for analytics
-    if let Err(e) = self
-      .db
-      .postgres
-      .db
-      .record_cex_activity(&cex.name.to_string(), &cex.address, &mint)
-      .await
-    {
-      error!("record_cex_activity_postgres_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
-      // Continue despite the error
-    } else {
-      debug!("record_cex_activity_postgres_success::{}::to::{}::mint::{}", cex.name, creator, mint);
+impl CreatorHandlerMetadata {
+    pub fn new(
+        receiver: mpsc::Receiver<CreatorHandler>,
+        db: Arc<StorageEngine>,
+        shutdown: ShutdownSignal,
+        rpc_config: Arc<RpcConfig>,
+    ) -> Self {
+        Self {
+            receiver,
+            db,
+            shutdown,
+            rpc_config,
+        }
     }
 
-    // Store the connection graph in pgrouting
-    if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
-      error!("store_connection_graph_pgrouting_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
-      // Continue despite the error
-    } else {
-      debug!("store_connection_graph_pgrouting_success::{}::to::{}::mint::{}", cex.name, creator, mint);
+    async fn process_cex_connection(
+        &self,
+        cex: Cex,
+        connection_graph: SharedCreatorCexConnectionGraph,
+        mint: Pubkey,
+    ) -> Result<()> {
+        // Update the token record with CEX source
+        let cex_sources = vec![cex.address];
+        let cex_updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let connection_graph = connection_graph.clone_graph().await;
+
+        // Update in PostgreSQL
+        self.db
+            .postgres
+            .db
+            .update_token_cex_sources(&mint, &cex_sources, cex_updated_at)
+            .await?;
+
+        // Record CEX activity for analytics
+        if let Err(e) = self
+            .db
+            .postgres
+            .db
+            .record_cex_activity(&cex.name.to_string(), &cex.address, &mint)
+            .await
+        {
+            error!("record_cex_activity_postgres_failed::{}::mint::{}::error::{}", cex.name, mint, e);
+            // Continue despite the error
+        } else {
+            debug!("record_cex_activity_postgres_success::{}::mint::{}", cex.name, mint);
+        }
+
+        // Store the connection graph in pgrouting
+        if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
+            error!("store_connection_graph_pgrouting_failed::{}::mint::{}::error::{}", cex.name, mint, e);
+            // Continue despite the error
+        } else {
+            debug!("store_connection_graph_pgrouting_success::{}::mint::{}", cex.name, mint);
+        }
+
+        // Update Redis cache
+        let token_key = mint.to_string();
+        if let Ok(Some(mut token_metadata)) =
+            self.db.redis.kv.get::<crate::model::token::TokenMetadata>(&token_key).await
+        {
+            token_metadata.cex_sources = Some(cex_sources.clone());
+            token_metadata.cex_updated_at = Some(cex_updated_at);
+
+            if let Err(e) = self.db.redis.kv.set(&token_key, &token_metadata).await {
+                error!("update_token_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
+            } else {
+                debug!("update_token_redis_success::{}::mint::{}", cex.name, mint);
+            }
+        }
+
+        // Store connection graph in Redis
+        let graph_key = format!("developer_connection_graph:{}", mint);
+        if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
+            error!("store_connection_graph_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
+        } else {
+            debug!("store_connection_graph_redis_success::{}::mint::{}", cex.name, mint);
+        }
+
+        // Store CEX information in Redis for quick access
+        let cex_key = format!("cex:{}", cex.address);
+        let cex_data = serde_json::json!({
+          "name": cex.name.to_string(),
+          "address": cex.address.to_string(),
+          "latest_mint": mint.to_string(),
+          "updated_at": cex_updated_at
+        });
+
+        if let Err(e) = self.db.redis.kv.set(&cex_key, &cex_data).await {
+            error!("store_cex_data_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
+        } else {
+            debug!("store_cex_data_redis_success::{}::mint::{}", cex.name, mint);
+        }
+
+        // Publish event
+        let event_data = serde_json::json!({
+          "mint": mint.to_string(),
+          "cex_name": cex.name.to_string(),
+          "cex_address": cex.address.to_string(),
+          "cex_updated_at": cex_updated_at,
+          "node_count": connection_graph.get_node_count(),
+          "edge_count": connection_graph.get_edge_count(),
+          "graph": connection_graph
+        });
+
+        if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
+            error!("publish_token_cex_updated_event_failed::{}::mint::{}::error::{}", cex.name, mint, e);
+        } else {
+            debug!("publish_token_cex_updated_event_success::{}::mint::{}", cex.name, mint);
+        }
+
+        debug!("process_cex_connection_completed::{}::mint::{}", cex.name, mint);
+        Ok(())
     }
 
-    // Update Redis cache
-    let token_key = mint.to_string();
-    if let Ok(Some(mut token_metadata)) = self.db.redis.kv.get::<crate::model::token::TokenMetadata>(&token_key).await {
-      token_metadata.cex_sources = Some(cex_sources.clone());
-      token_metadata.cex_updated_at = Some(cex_updated_at);
+    async fn process_bfs_level(
+        &self,
+        creator_metadata: Arc<CreatorMetadata>,
+        _sender: Pubkey,
+        child_token: CancellationToken,
+        creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+    ) -> Result<()> {
+        let db_engine = self.db.clone();
+        let shutdown_signal = self.shutdown.clone();
+        let (operator_sender, operator_receiver) = mpsc::channel(1000);
+        let rpc_config = self.rpc_config.clone();
 
-      if let Err(e) = self.db.redis.kv.set(&token_key, &token_metadata).await {
-        error!("update_token_redis_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
-      } else {
-        debug!("update_token_redis_success::{}::to::{}::mint::{}", cex.name, creator, mint);
-      }
+        let creator_handler = Arc::new(CreatorHandlerOperator::new(
+            db_engine.clone(),
+            shutdown_signal.clone(),
+            operator_receiver,
+            operator_sender,
+            rpc_config,
+        ));
+
+        let max_depth = creator_metadata.max_depth;
+        let processor = CreatorInstructionProcessor::new(
+            creator_handler.clone(),
+            creator_metadata.clone(),
+            child_token.clone(),
+            creator_analyzer_config.clone(),
+        );
+        let rpc_config = self.rpc_config.clone();
+
+        tokio::spawn(async move {
+            if let Ok(Some(mut pipeline)) =
+                make_creator_crawler_pipeline(processor, child_token, max_depth, rpc_config).await
+            {
+                if let Err(e) = pipeline.run().await {
+                    error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
+                }
+            }
+        });
+        Ok(())
     }
-
-    // Store connection graph in Redis
-    let graph_key = format!("developer_connection_graph:{}", mint);
-    if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
-      error!("store_connection_graph_redis_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
-    } else {
-      debug!("store_connection_graph_redis_success::{}::to::{}::mint::{}", cex.name, creator, mint);
-    }
-
-    // Store CEX information in Redis for quick access
-    let cex_key = format!("cex:{}", cex.address);
-    let cex_data = serde_json::json!({
-      "name": cex.name.to_string(),
-      "address": cex.address.to_string(),
-      "latest_mint": mint.to_string(),
-      "updated_at": cex_updated_at
-    });
-
-    if let Err(e) = self.db.redis.kv.set(&cex_key, &cex_data).await {
-      error!("store_cex_data_redis_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
-    } else {
-      debug!("store_cex_data_redis_success::{}::to::{}::mint::{}", cex.name, creator, mint);
-    }
-
-    // Publish event
-    let event_data = serde_json::json!({
-      "mint": mint.to_string(),
-      "cex_name": cex.name.to_string(),
-      "cex_address": cex.address.to_string(),
-      "creator": creator.to_string(),
-      "cex_updated_at": cex_updated_at,
-      "node_count": connection_graph.get_node_count(),
-      "edge_count": connection_graph.get_edge_count()
-    });
-
-    if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
-      error!("publish_token_cex_updated_event_failed::{}::to::{}::mint::{}::error::{}", cex.name, creator, mint, e);
-    } else {
-      debug!("publish_token_cex_updated_event_success::{}::to::{}::mint::{}", cex.name, creator, mint);
-    }
-
-    info!("process_cex_connection_completed::{}::to::{}::mint::{}", cex.name, creator, mint);
-    Ok(())
-  }
-
-  async fn process_bfs_level(
-    &self,
-    address: Pubkey,
-    depth: usize,
-    mint: Pubkey,
-    connection_graph: CreatorCexConnectionGraph,
-  ) -> Result<()> {
-    debug!("process_bfs_level::address::{}::depth::{}::mint::{}", address, depth, mint);
-
-    // Get configurable max depth
-    let config = load_config("Config.toml")?;
-    let max_bfs_depth = config.creator_analyzer.max_depth;
-    // Skip if we've reached max depth
-    if depth >= max_bfs_depth {
-      info!("process_bfs_level_reached_max_depth::address::{}::depth::{}::mint::{}", address, depth, mint);
-      return Ok(());
-    }
-
-    // Create a new pipeline to analyze this address
-    let token = NewTokenCache {
-      mint,
-      name: String::new(),   // Not important for BFS
-      symbol: String::new(), // Not important for BFS
-      uri: String::new(),    // Not important for BFS
-      creator: address,      // Use the current BFS address as target
-    };
-
-    let child_token = self.cancellation_token.child_token();
-
-    // Create a new handler for this BFS level
-    let handler =
-      CreatorHandlerOperator::new(self.db.clone(), self.shutdown.clone(), self.rpc_url.clone(), child_token.clone());
-
-    // Store connection graph in Redis for BFS level
-    let graph_key = format!("bfs_connection_graph:{}:{}", mint, depth);
-    if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
-      error!(
-        "store_bfs_connection_graph_redis_failed::address::{}::depth::{}::mint::{}::error::{}",
-        address, depth, mint, e
-      );
-    }
-
-    let handler = Arc::new(handler);
-
-    let mut pipeline =
-      make_creator_crawler_pipeline(self.rpc_url.clone(), handler.clone(), token, child_token.clone(), max_bfs_depth)?;
-
-    // Run in background with proper cancellation handling
-    tokio::spawn(async move {
-      tokio::select! {
-          result = pipeline.run() => {
-              match result {
-                  Ok(_) => {
-                      info!("bfs_completed::address::{}::depth::{}::mint::{}", address, depth, mint);
-                  },
-                  Err(e) => {
-                      error!("bfs_error::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
-                  }
-              }
-          },
-          _ = child_token.cancelled() => {
-              debug!("cancelling_bfs_pipeline::address::{}::depth::{}::mint::{}", address, depth, mint);
-          }
-      }
-    });
-
-    Ok(())
-  }
 }
 
 async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandlerMetadata) {
-  info!("creator_handler_metadata::started");
+    debug!("creator_handler_metadata::started");
 
-  loop {
-    tokio::select! {
-        Some(msg) = creator_handler_metadata.receiver.recv() => {
-            match msg {
-                CreatorHandler::StoreCreator { creator_metadata } => {
-                    info!("store_creator_metadata::{}", creator_metadata.address);
-                },
-                CreatorHandler::CexConnection { cex, cex_connection, mint, creator } => {
-                    if let Err(e) = creator_handler_metadata.process_cex_connection(
-                        cex.clone(), cex_connection, mint, creator
-                    ).await {
-                        error!("cex_failed::{}::to::{}::mint::{}::error::{}", cex.clone().name, creator, mint, e);
-                    }
-                },
-                CreatorHandler::ProcessBfsLevel { address, depth, mint, connection_graph } => {
-                    if let Err(e) = creator_handler_metadata.process_bfs_level(
-                        address, depth, mint, connection_graph
-                    ).await {
-                        error!("bfs_failed::address::{}::depth::{}::mint::{}::error::{}", address, depth, mint, e);
-                    }
+    loop {
+        tokio::select! {
+            Some(msg) = creator_handler_metadata.receiver.recv() => {
+                match msg {
+                    CreatorHandler::ProcessBfsLevel { creator_metadata, sender, child_token, creator_analyzer_config } => {
+                        if let Err(e) = creator_handler_metadata.process_bfs_level(creator_metadata, sender, child_token, creator_analyzer_config).await {
+                            error!("failed_to_process_sender::error::{}", e);
+                        }
+                    },
+                    CreatorHandler::CexConnection { cex, cex_connection, mint } => {
+                        if let Err(e) = creator_handler_metadata.process_cex_connection(
+                            cex.clone(), cex_connection, mint
+                        ).await {
+                            error!("cex_failed::{}::mint::{}::error::{}", cex.clone().name, mint, e);
+                        }
+                    },
                 }
+            },
+            else => {
+                // Channel closed, exit gracefully
+                info!("creator_handler_metadata::channel_closed::exiting");
+                break;
             }
-        },
-        _ = creator_handler_metadata.shutdown.wait_for_shutdown() => {
-            debug!("creator_handler_metadata::received_shutdown_signal");
-            break;
-        },
-        else => {
-            debug!("creator_handler_metadata::all_senders_dropped");
-            break;
         }
     }
-  }
-
-  info!("creator_handler_metadata::shutdown");
 }
 
 #[derive(Debug, Clone)]
 pub struct CreatorHandlerOperator {
-  db:       Arc<StorageEngine>,
-  sender:   mpsc::Sender<CreatorHandler>,
-  shutdown: ShutdownSignal,
+    db: Arc<StorageEngine>,
+    pub sender: mpsc::Sender<CreatorHandler>,
+    pub shutdown: ShutdownSignal,
 }
 
 impl CreatorHandlerOperator {
-  pub fn new(
-    db: Arc<StorageEngine>,
-    shutdown: ShutdownSignal,
-    rpc_url: String,
-    cancellation_token: CancellationToken,
-  ) -> Self {
-    let (sender, receiver) = mpsc::channel(1000);
+    pub fn new(
+        db: Arc<StorageEngine>,
+        shutdown: ShutdownSignal,
+        receiver: mpsc::Receiver<CreatorHandler>,
+        sender: mpsc::Sender<CreatorHandler>,
+        rpc_config: Arc<RpcConfig>,
+    ) -> Self {
+        let metadata = CreatorHandlerMetadata::new(receiver, db.clone(), shutdown.clone(), rpc_config.clone());
 
-    let metadata = CreatorHandlerMetadata::new(receiver, db.clone(), shutdown.clone(), rpc_url, cancellation_token);
+        // Spawn the actor
+        tokio::spawn(run_creator_handler_metadata(metadata));
 
-    // Spawn the actor
-    tokio::spawn(run_creator_handler_metadata(metadata));
-
-    Self { db, sender, shutdown }
-  }
-
-  pub async fn record_cex_connection(
-    &self,
-    cex: Cex,
-    connection_graph: CreatorCexConnectionGraph,
-    mint: Pubkey,
-    creator: Pubkey,
-  ) -> Result<()> {
-    debug!("record_cex_connection::{}::to:: {}", cex.name, creator);
-
-    // Record the CEX connection directly in the database
-    let cex_sources = vec![cex.address];
-    let cex_updated_at = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_secs();
-
-    // Update PostgreSQL with the CEX connection
-    match self
-      .db
-      .postgres
-      .db
-      .update_token_cex_sources(&mint, &cex_sources, cex_updated_at)
-      .await
-    {
-      Ok(_) => {
-        debug!("record_cex_connection_postgres_success::{}::to::{}", cex.clone().name, creator);
-      },
-      Err(e) => {
-        error!("record_cex_connection_postgres_failed::{}::to::{}::error::{}", cex.clone().name, creator, e);
-        // Continue processing despite the error
-      },
+        Self {
+            db,
+            sender,
+            shutdown,
+        }
     }
 
-    // Use try_send for backpressure handling
-    match self.sender.try_send(CreatorHandler::CexConnection {
-      cex: cex.clone(),
-      cex_connection: connection_graph,
-      mint,
-      creator,
-    }) {
-      Ok(()) => {
-        debug!("cex_connection_sent_for_processing::{}::to::{}::mint::{}", cex.clone().name, creator, mint);
+    pub async fn process_sender(
+        &self,
+        creator_metadata: Arc<CreatorMetadata>,
+        sender: Pubkey,
+        receiver: Pubkey,
+        amount: f64,
+        timestamp: i64,
+        child_token: CancellationToken,
+        creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+    ) -> Result<()> {
+        let wallet_connection = creator_metadata.wallet_connection.clone();
+
+        if let Some(cex_name) = Cex::get_exchange_name(sender) {
+            let cex = Cex::new(cex_name, sender);
+            wallet_connection.add_node(sender, true).await;
+            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
+
+            if let Err(e) = self.sender.try_send(CreatorHandler::CexConnection {
+                cex: cex.clone(),
+                cex_connection: wallet_connection,
+                mint: creator_metadata.mint,
+            }) {
+                error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
+                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                    "Failed to send cex connection request ({}): {}",
+                    cex.name, e
+                ))));
+            }
+
+            // cache receiver connection with cex
+            let address_key = format!("address:{}", receiver);
+            let address_data = serde_json::json!({
+                "name": cex.name.to_string(),
+                "address": cex.address.to_string(),
+            });
+            if let Err(e) = self.db.redis.kv.set(&address_key, &address_data).await {
+                error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
+            }
+
+            info!("cex_found_and_stored::cex::{}::mint::{}", cex.name, creator_metadata.mint);
+            child_token.cancel();
+            return Ok(());
+        }
+
+        if let Ok(Some(cex_found)) = self.db.redis.kv.get::<Cex>(&sender.to_string()).await {
+            wallet_connection.add_node(sender, false).await;
+            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
+
+            if let Err(e) = self.sender.try_send(CreatorHandler::CexConnection {
+                cex: cex_found.clone(),
+                cex_connection: wallet_connection,
+                mint: creator_metadata.mint,
+            }) {
+                error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
+                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                    "Failed to send cex connection request ({}): {}",
+                    cex_found.name, e
+                ))));
+            }
+            info!("sender_cex_connection_found::mint::{}::cex::{}", creator_metadata.mint, cex_found.name);
+            child_token.cancel();
+            return Ok(());
+        }
+
+        // Check if receiver was already visited and update BFS state
+        if let Some((depth, mut neighbors)) = creator_metadata.get_visited(&receiver).await {
+            neighbors.insert(0, sender);
+            creator_metadata.mark_visited(sender, depth + 1, neighbors.clone()).await;
+            creator_metadata.push_to_queue((sender, depth + 1, neighbors)).await;
+        }
+
+        wallet_connection.add_node(sender, false).await;
+        wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
+
+        // start the pipeline
+        if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
+            creator_metadata,
+            sender,
+            child_token,
+            creator_analyzer_config,
+        }) {
+            error!(
+                "failed_to_send_process_sender_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}",
+                sender, receiver, amount, timestamp, e
+            );
+            return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                "Failed to send process sender request: {}",
+                e
+            ))));
+        }
+
         Ok(())
-      },
-      Err(e) => {
-        error!("cex_connection_send_failed::{}::to::{}::mint::{}::error::{}", cex.clone().name, creator, mint, e);
-        Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!("Failed to send CEX connection: {}", e))))
-      },
     }
-  }
 
-  pub async fn process_next_bfs_level(
-    &self,
-    address: Pubkey,
-    depth: usize,
-    mint: Pubkey,
-    connection_graph: CreatorCexConnectionGraph,
-  ) -> Result<()> {
-    debug!("process_next_bfs_level::address::{}::depth::{}::mint::{}", address, depth, mint);
-
-    // Use try_send for backpressure handling
-    match self
-      .sender
-      .try_send(CreatorHandler::ProcessBfsLevel { address, depth, mint, connection_graph })
-    {
-      Ok(()) => {
-        debug!("bfs_level_processing_request_sent::address::{}::depth::{}::mint::{}", address, depth, mint);
-        Ok(())
-      },
-      Err(e) => {
-        error!(
-          "bfs_level_processing_request_send_failed::address::{}::depth::{}::mint::{}::error::{}",
-          address, depth, mint, e
-        );
-        Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!("Failed to send BFS level request: {}", e))))
-      },
+    pub async fn get_pending_account_counts(&self) -> Result<(usize, usize)> {
+        self.db.redis.queue.get_pending_account_counts().await.map_err(|e| {
+            error!("failed_to_get_pending_account_counts: {}", e);
+            err_with_loc!(HandlerError::RedisQueryError(format!("Failed to get pending account counts: {}", e)))
+        })
     }
-  }
 
-  pub fn shutdown(&self) { self.shutdown.shutdown(); }
+    pub fn shutdown(&self) {
+        self.shutdown.shutdown();
+    }
 }

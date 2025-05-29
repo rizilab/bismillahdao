@@ -6,6 +6,7 @@ pub mod handler;
 pub mod metric;
 pub mod model;
 pub mod pipeline;
+pub mod rpc;
 pub mod storage;
 pub mod utils;
 
