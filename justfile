@@ -77,3 +77,6 @@ shell container:
 
 run-raqib:
   just muhafidh/run-raqib
+
+run-baseer:
+  just muhafidh/run-baseer

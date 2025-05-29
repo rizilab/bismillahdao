@@ -1,0 +1,40 @@
+# Start from the official rust image and install cargo-chef
+FROM blackdex/rust-musl:x86_64-musl-1.87.0 AS chef
+USER root
+RUN cargo install cargo-chef
+RUN cargo install sccache
+RUN apt-get update && \
+    apt-get install -y \
+    protobuf-compiler 
+
+ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache PROTOC="/usr/bin/protoc"
+
+
+# Plan the build. If this has already been done, no need to re-do it
+FROM chef AS planner
+WORKDIR /app
+COPY muhafidh .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo chef prepare --recipe-path recipe.json
+
+# Build the dependencies
+FROM chef AS builder
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo chef cook --release --target x86_64-unknown-linux-musl --bin raqib --recipe-path recipe.json
+
+COPY muhafidh .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo build --release --target x86_64-unknown-linux-musl --bin raqib --features prod
+
+# Use a minimal base image for the final build
+FROM alpine AS runtime
+RUN addgroup -S rizilab && adduser -S rizilab -G rizilab
+WORKDIR /app
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/raqib /usr/local/bin/raqib
+USER rizilab
+CMD ["/usr/local/bin/raqib"]

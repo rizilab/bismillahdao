@@ -20,7 +20,8 @@ include:
   - ./compose/mutamad/web.dev.yaml
   # - ./compose/mutamad/mpc.dev.yaml
   - ./compose/twitter-monitor/twitter-monitor.dev.yaml
-  - ./compose/muhafidh/muhafidh.dev.yaml
+  - ./compose/muhafidh/raqib.yaml
+
 
 services:
   bismillahdao-caddy:
