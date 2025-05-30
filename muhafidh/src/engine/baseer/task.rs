@@ -336,8 +336,6 @@ impl Baseer {
                                     if failed_count > 100 {
                                         warn!("high_failure_rate::failed_count::{}::check_rpc_health", failed_count);
                                     }
-                                } else {
-                                    info!("queue_status::all_queues_empty::heartbeat");
                                 }
                             },
                             Err(e) => {

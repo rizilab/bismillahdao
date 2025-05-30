@@ -34,7 +34,7 @@ pub async fn make_creator_crawler_pipeline(
 
     if depth > max_depth {
         child_token.cancel();
-        warn!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
+        debug!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
         return Ok(None);
     }
 
