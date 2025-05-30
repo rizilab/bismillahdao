@@ -13,10 +13,10 @@ use tracing::warn;
 use super::Baseer;
 use crate::Result;
 use crate::handler::shutdown::ShutdownSignal;
+use crate::handler::token::CreatorHandler;
 use crate::model::creator::metadata::CreatorMetadata;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::storage::redis::model::AccountToAnalyze;
 use crate::storage::redis::model::NewTokenCache;
 
 impl Baseer {
@@ -26,6 +26,7 @@ impl Baseer {
         sender: mpsc::Sender<NewTokenCache>,
     ) -> JoinHandle<()> {
         let db = self.db.clone();
+        let max_depth = self.config.creator_analyzer.max_depth;
         tokio::spawn(async move {
             // Clone the db here to avoid borrowing conflicts
             let db_for_subscriber = db.clone();
@@ -50,7 +51,10 @@ impl Baseer {
                     let mint = token.mint;
                     if buffer_rx.capacity() < 900 {
                         error!("low_capacity_on_buffer::mint::{}", mint);
-                        if let Err(e) = db_for_buffer.redis.queue.add_unprocessed_account(&AccountToAnalyze::from(token.clone())).await {
+                        let mut creator_metadata: CreatorMetadata = token.clone().into();
+                        creator_metadata.max_depth = max_depth;
+                        creator_metadata.mark_as_unprocessed();
+                        if let Err(e) = db_for_buffer.redis.queue.add_unprocessed_account(&creator_metadata).await {
                             error!("failed_to_add_token_to_redis::mint::{}::error::{}", mint, e);
                         }
                     }
@@ -72,7 +76,7 @@ impl Baseer {
                     }
                   },
                   _ = shutdown_fut.wait_for_shutdown() => {
-                    info!("token_subscriber::shutdown_signal_received::ending_task");
+                    debug!("token_subscriber::shutdown_signal_received::ending_task");
                     break;
                   }
                 }
@@ -102,33 +106,51 @@ impl Baseer {
                         debug!("new_token_received::mint::{}::name::{}::creator::{}", token.mint, token.name, token.creator);
                         let child_token = cancellation_token.child_token();
                         let rpc_config_clone = rpc_config.clone();
-                        let creator_metadata = CreatorMetadata::new(token.mint, token.creator, max_depth).await;
+                        let creator_metadata = CreatorMetadata::from_token(token.clone(), max_depth).await;
 
                         tokio::spawn(async move {
                             let creator_metadata = Arc::new(creator_metadata);
-                            let processor = CreatorInstructionProcessor::new(creator_handler.clone(), creator_metadata, child_token.clone(), creator_analyzer_config);
+                            let processor = CreatorInstructionProcessor::new(creator_handler.clone(), creator_metadata.clone(), child_token.clone(), creator_analyzer_config);
 
-                            if let Ok(Some(mut pipeline)) = make_creator_crawler_pipeline(
-                                processor,
+                            match make_creator_crawler_pipeline(
+                                processor.clone(),
                                 child_token,
                                 max_depth,
                                 rpc_config_clone
                             ).await {
-                                if let Err(e) = pipeline.run().await {
-                                    error!("pipeline_run_failed::mint::{}::error::{}", token.mint, e);
+                                Ok(Some(mut pipeline)) => {
+                                    if let Err(e) = pipeline.run().await {
+                                        error!("pipeline_run_failed::mint::{}::error::{}", token.mint, e);
+                                        // Handle failure by adding to failed queue
+                                        processor.handle_pipeline_failure().await;
+                                    }
+                                },
+                                Ok(None) => {
+                                    debug!("no_pipeline_created::mint::{}", token.mint);
+                                    // Add to unprocessed queue when no pipeline is created
+                                    let mut unprocessed_metadata = (*creator_metadata).clone();
+                                    unprocessed_metadata.mark_as_unprocessed();
+                                    if let Err(e) = creator_handler.add_failed_account(&unprocessed_metadata).await {
+                                        error!("failed_to_add_to_unprocessed_queue::mint::{}::error::{}", token.mint, e);
+                                    }
+                                },
+                                Err(e) => {
+                                    error!("pipeline_creation_failed::mint::{}::error::{}", token.mint, e);
+                                    // Handle failure by adding to failed queue
+                                    processor.handle_pipeline_failure().await;
                                 }
                             }
                         });
                     },
                     _ = cancellation_token.cancelled() => {
                         // Application-wide shutdown requested
-                        info!("creator_analyzer_task_cancelled::shutting_down");
+                        debug!("creator_analyzer_task_cancelled::shutting_down");
                         // All child tokens are automatically cancelled when parent is cancelled
                         break;
                     },
                     else => {
                         // Channel closed, exit gracefully
-                        info!("creator_analyzer_task_ending::channel_closed");
+                        debug!("creator_analyzer_task_ending::channel_closed");
                         break;
                     }
                 }
@@ -138,169 +160,101 @@ impl Baseer {
         })
     }
 
-    // New method to spawn a task for processing failed and unprocessed accounts
+    // Simplified account recovery task - just fetches and sends to actor
     pub fn spawn_account_recovery(
         &self,
         cancellation_token: CancellationToken,
     ) -> JoinHandle<Result<()>> {
         let db = self.db.clone();
         let creator_handler = self.creator_handler.clone();
-        let rpc_config = self.rpc_config.clone();
-        let creator_analyzer_config = Arc::new(self.config.creator_analyzer.clone());
         let shutdown_signal = creator_handler.shutdown.clone();
+        let creator_analyzer_config = Arc::new(self.config.creator_analyzer.clone());
 
         tokio::spawn(async move {
             debug!("account_recovery_task::started");
 
-            // Define a single recovery interval - all operations use this timer
-            let recovery_interval = Duration::from_secs(10);
-
-            // Create single timer
-            let mut recovery_timer = tokio::time::interval(recovery_interval);
-
-            // Start the timer immediately
+            // Define recovery interval - start with faster checks
+            let base_interval = Duration::from_secs(5); // Check every 5 seconds when active
+            let idle_interval = Duration::from_secs(30); // Check every 30 seconds when idle
+            let mut current_interval = base_interval;
+            let mut recovery_timer = tokio::time::interval(current_interval);
             recovery_timer.tick().await;
 
-            // Loop until shutdown
+            let mut consecutive_empty_checks = 0;
+
             loop {
-                let db = db.clone();
                 tokio::select! {
                     _ = recovery_timer.tick() => {
+                        let mut found_work = false;
+
                         // First try to process failed accounts (higher priority)
                         match db.redis.queue.get_next_failed_account().await {
                             Ok(Some(account)) => {
-                                info!("processing_failed_account::account::{}::depth::{}::retry_count::{}",
-                                    account.account, account.depth, account.retry_count);
+                                found_work = true;
+                                debug!("processing_failed_account::account::{}::mint::{}::retry_count::{}",
+                                    account.address, account.mint, account.retry_count);
 
                                 // Check if we've exceeded max retries
                                 if account.retry_count >= 3 {
-                                    error!("max_retries_exceeded::account::{}::moving_to_dead_letter", account.account);
-                                    // Could implement dead letter queue here if needed
+                                    // warn!("max_retries_exceeded::account::{}::mint::{}::moving_to_dead_letter",
+                                    //     account.address, account.mint);
+                                    // <TODO> implement dead letter queue here if needed
                                     continue;
                                 }
 
-                                // Create a new token cache from the account
-                                let token = NewTokenCache {
-                                    mint: account.parent_mint,
-                                    name: format!("Recovery-{}", account.parent_mint),
-                                    symbol: "REC".to_string(),
-                                    uri: "".to_string(),
-                                    creator: account.account,
-                                    created_at: account.created_at,
-                                };
-
-                                // Process the account using the same logic as new tokens
+                                // Send to actor for processing
                                 let child_token = cancellation_token.child_token();
-                                let creator_metadata = CreatorMetadata::new(
-                                    token.mint,
-                                    token.creator,
-                                    creator_analyzer_config.max_depth
-                                ).await;
+                                let creator_metadata = Arc::new(account);
 
-                                let creator_handler_clone = creator_handler.clone();
-                                let rpc_config_clone = rpc_config.clone();
-                                let creator_analyzer_config_clone = creator_analyzer_config.clone();
-                                let max_depth = creator_analyzer_config_clone.max_depth;
+                                if let Err(e) = creator_handler.sender.try_send(CreatorHandler::ProcessRecoveredAccount {
+                                    creator_metadata: creator_metadata.clone(),
+                                    child_token,
+                                    creator_analyzer_config: creator_analyzer_config.clone(),
+                                }) {
+                                    error!("failed_to_send_recovery_request::mint::{}::error::{}",
+                                        creator_metadata.mint, e);
 
-                                tokio::spawn(async move {
-                                    let creator_metadata = Arc::new(creator_metadata);
-                                    let processor = CreatorInstructionProcessor::new(
-                                        creator_handler_clone.clone(),
-                                        creator_metadata,
-                                        child_token.clone(),
-                                        creator_analyzer_config_clone
-                                    );
-
-                                    if let Ok(Some(mut pipeline)) = make_creator_crawler_pipeline(
-                                        processor,
-                                        child_token,
-                                        max_depth,
-                                        rpc_config_clone
-                                    ).await {
-                                        if let Err(e) = pipeline.run().await {
-                                            error!("recovery_pipeline_failed::mint::{}::error::{}", token.mint, e);
-
-                                            // Mark as failed and re-add to queue
-                                            let mut failed_account = account.clone();
-                                            failed_account.mark_as_failed();
-
-                                            if let Err(e) = db.redis.queue.add_failed_account(&failed_account).await {
-                                                error!("failed_to_requeue_failed_account::account::{}::error::{}",
-                                                    failed_account.account, e);
-                                            }
-                                        } else {
-                                            info!("recovery_pipeline_success::mint::{}::account::{}",
-                                                token.mint, token.creator);
-                                        }
+                                    // Re-add to failed queue
+                                    let mut failed_account = (*creator_metadata).clone();
+                                    failed_account.mark_as_failed();
+                                    if let Err(e) = db.redis.queue.add_failed_account(&failed_account).await {
+                                        error!("failed_to_requeue_failed_account::account::{}::error::{}",
+                                            failed_account.address, e);
                                     }
-                                });
+                                }
                             },
                             Ok(None) => {
                                 // No failed accounts, try unprocessed
                                 match db.redis.queue.get_next_unprocessed_account().await {
                                     Ok(Some(account)) => {
-                                        info!("processing_unprocessed_account::account::{}::depth::{}",
-                                            account.account, account.depth);
+                                        found_work = true;
+                                        debug!("processing_unprocessed_account::account::{}::mint::{}",
+                                            account.address, account.mint);
 
-                                        // Create a new token cache from the account
-                                        let token = NewTokenCache {
-                                            mint: account.parent_mint,
-                                            name: format!("Unprocessed-{}", account.parent_mint),
-                                            symbol: "UNP".to_string(),
-                                            uri: "".to_string(),
-                                            creator: account.account,
-                                            created_at: account.created_at,
-                                        };
-
-                                        // Process the account
+                                        // Send to actor for processing
                                         let child_token = cancellation_token.child_token();
-                                        let creator_metadata = CreatorMetadata::new(
-                                            token.mint,
-                                            token.creator,
-                                            creator_analyzer_config.max_depth
-                                        ).await;
+                                        let creator_metadata = Arc::new(account);
 
-                                        let creator_handler_clone = creator_handler.clone();
-                                        let rpc_config_clone = rpc_config.clone();
-                                        let creator_analyzer_config_clone = creator_analyzer_config.clone();
-                                        let max_depth = creator_analyzer_config_clone.max_depth;
+                                        if let Err(e) = creator_handler.sender.try_send(CreatorHandler::ProcessRecoveredAccount {
+                                            creator_metadata: creator_metadata.clone(),
+                                            child_token,
+                                            creator_analyzer_config: creator_analyzer_config.clone(),
+                                        }) {
+                                            error!("failed_to_send_unprocessed_request::mint::{}::error::{}",
+                                                creator_metadata.mint, e);
 
-                                        tokio::spawn(async move {
-                                            let creator_metadata = Arc::new(creator_metadata);
-                                            let processor = CreatorInstructionProcessor::new(
-                                                creator_handler_clone.clone(),
-                                                creator_metadata,
-                                                child_token.clone(),
-                                                creator_analyzer_config_clone
-                                            );
-
-                                            if let Ok(Some(mut pipeline)) = make_creator_crawler_pipeline(
-                                                processor,
-                                                child_token,
-                                                max_depth,
-                                                rpc_config_clone
-                                            ).await {
-                                                if let Err(e) = pipeline.run().await {
-                                                    error!("unprocessed_pipeline_failed::mint::{}::error::{}",
-                                                        token.mint, e);
-
-                                                    // Mark as failed and add to failed queue
-                                                    let mut failed_account = account.clone();
-                                                    failed_account.mark_as_failed();
-
-                                                    if let Err(e) = db.redis.queue.add_failed_account(&failed_account).await {
-                                                        error!("failed_to_add_to_failed_queue::account::{}::error::{}",
-                                                            failed_account.account, e);
-                                                    }
-                                                } else {
-                                                    info!("unprocessed_pipeline_success::mint::{}::account::{}",
-                                                        token.mint, token.creator);
-                                                }
+                                            // Mark as failed and add to failed queue
+                                            let mut failed_account = (*creator_metadata).clone();
+                                            failed_account.mark_as_failed();
+                                            if let Err(e) = db.redis.queue.add_failed_account(&failed_account).await {
+                                                error!("failed_to_add_to_failed_queue::account::{}::error::{}",
+                                                    failed_account.address, e);
                                             }
-                                        });
+                                        }
                                     },
                                     Ok(None) => {
-                                        debug!("no_accounts_to_recover");
+                                        // Log periodically that we're checking but no accounts to recover
+                                        debug!("no_accounts_to_recover::checking_again_in_{}s", current_interval.as_secs());
                                     },
                                     Err(e) => {
                                         error!("failed_to_get_unprocessed_account::error::{}", e);
@@ -311,6 +265,26 @@ impl Baseer {
                                 error!("failed_to_get_failed_account::error::{}", e);
                             }
                         }
+
+                        // Adjust interval based on activity
+                        if found_work {
+                            consecutive_empty_checks = 0;
+                            if current_interval != base_interval {
+                                current_interval = base_interval;
+                                recovery_timer = tokio::time::interval(current_interval);
+                                recovery_timer.tick().await; // Reset the timer
+                                debug!("recovery_task::switching_to_active_mode::interval_{}s", current_interval.as_secs());
+                            }
+                        } else {
+                            consecutive_empty_checks += 1;
+                            // Switch to idle mode after 3 empty checks
+                            if consecutive_empty_checks >= 3 && current_interval != idle_interval {
+                                current_interval = idle_interval;
+                                recovery_timer = tokio::time::interval(current_interval);
+                                recovery_timer.tick().await; // Reset the timer
+                                debug!("recovery_task::switching_to_idle_mode::interval_{}s", current_interval.as_secs());
+                            }
+                        }
                     },
                     _ = shutdown_signal.wait_for_shutdown() => {
                         warn!("account_recovery_task::shutdown_signal_received");
@@ -319,7 +293,7 @@ impl Baseer {
                 }
             }
 
-            debug!("account_recovery_task::ended");
+            info!("account_recovery_task::ended");
             Ok(())
         })
     }
@@ -363,7 +337,7 @@ impl Baseer {
                                         warn!("high_failure_rate::failed_count::{}::check_rpc_health", failed_count);
                                     }
                                 } else {
-                                    debug!("queue_status::all_queues_empty");
+                                    info!("queue_status::all_queues_empty::heartbeat");
                                 }
                             },
                             Err(e) => {

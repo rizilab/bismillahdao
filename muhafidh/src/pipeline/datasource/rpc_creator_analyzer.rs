@@ -28,12 +28,13 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::error;
-use tracing::info;
 use tracing::warn;
 
 use crate::config::CreatorAnalyzerConfig;
 use crate::rpc::config::RpcConfig;
 use crate::rpc::config::RpcProviderRole;
+use crate::utils::calculate_backoff_with_jitter;
+use crate::utils::is_retryable_error;
 
 #[derive(Debug, Clone)]
 pub struct Filters {
@@ -160,86 +161,122 @@ fn signature_fetcher(
         loop {
             tokio::select! {
                 _ = cancellation_token.cancelled() => {
-                    info!("cancellation_detected_in_signature_fetcher");
+                    debug!("cancellation_detected_in_signature_fetcher");
                     break;
                 }
-                      _ = tokio::time::sleep(Duration::from_millis(0)) => {
-                          // Get next client using the new API
-                          let commitment_config = commitment.unwrap_or(CommitmentConfig::confirmed());
-                          if let Some((client, provider_name)) = rpc_config.get_next_client_for_role(
-                              &RpcProviderRole::SignatureFetcher,
-                              commitment_config
-                          ).await {
-                              debug!("fetching_signatures::provider::{}::account::{}", provider_name, account);
+                _ = tokio::time::sleep(Duration::from_millis(0)) => {
+                    // Get next client using the new API
+                    let commitment_config = commitment.unwrap_or(CommitmentConfig::confirmed());
+                    if let Some((client, provider_name)) = rpc_config.get_next_client_for_role(
+                        &RpcProviderRole::SignatureFetcher,
+                        commitment_config
+                    ).await {
+                        debug!("fetching_signatures::provider::{}::account::{}", provider_name, account);
 
-                              match client
-                                  .get_signatures_for_address_with_config(&account, GetConfirmedSignaturesForAddress2Config {
-                                      before:     before_signature,
-                                      until:      until_signature,
-                                      limit:      None,
-                                      commitment: Some(commitment_config),
-                                  })
-                                  .await
-                              {
-                                Ok(signatures) => {
-                                    if signatures.is_empty() {
-                                        debug!("no_signatures_found_for_account::{}", account);
-                                        return;
-                                    }
-
-                                    debug!("fetched_signatures::count::{}::provider::{}", signatures.len(), provider_name);
-
-                                    let max_signatures_to_fetch = config.max_signatures_to_check;
-
-                                    for sig_info in signatures.iter().rev().take(max_signatures_to_fetch) {
-                                        // Check if we're cancelled before processing each signature
-                                        if cancellation_token.is_cancelled() {
-                                            debug!("cancellation_detected_during_signature_processing");
-                                            return;
-                                        }
-
-                                        let signature = match Signature::from_str(&sig_info.signature) {
-                                            Ok(sig) => sig,
-                                            Err(e) => {
-                                                error!("invalid_signature_format::{}::error::{:?}", sig_info.signature, e);
-                                                continue;
-                                            },
-                                        };
-
-                                        if let Err(e) = signature_sender.try_send(signature) {
-                                            debug!("signature_channel_closed::likely_cancelled::error::{:?}", e);
-                                            return;
-                                        }
-                                    }
-
-                                    let start = Instant::now();
-                                    let time_taken = start.elapsed().as_millis();
-
-                                    metrics.record_histogram("transaction_crawler_signatures_fetch_times_milliseconds", time_taken as f64)
-                                          .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
-
-                                    metrics.increment_counter("transaction_crawler_signatures_fetched", signatures.len() as u64).await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
-
+                        match client
+                            .get_signatures_for_address_with_config(&account, GetConfirmedSignaturesForAddress2Config {
+                                before:     before_signature,
+                                until:      until_signature,
+                                limit:      None,
+                                commitment: Some(commitment_config),
+                            })
+                            .await
+                        {
+                            Ok(signatures) => {
+                                if signatures.is_empty() {
+                                    debug!("no_signatures_found_for_account::{}", account);
                                     return;
                                 }
-                                Err(e) => {
-                                    error!("error_fetching_signatures::provider::{}::account::{}::error::{}", provider_name, account, e);
 
-                                    retry_count += 1;
-                                    if retry_count >= max_retries {
-                                        error!("max_retries_reached_for_signatures::account::{}", account);
+                                debug!("fetched_signatures::count::{}::provider::{}", signatures.len(), provider_name);
+
+                                let max_signatures_to_fetch = config.max_signatures_to_check;
+
+                                for sig_info in signatures.iter().take(max_signatures_to_fetch) {
+                                    // Check if we're cancelled before processing each signature
+                                    if cancellation_token.is_cancelled() {
+                                        debug!("cancellation_detected_during_signature_processing");
                                         return;
                                     }
 
-                                    // Wait 1 second before retry as requested
-                                    tokio::time::sleep(Duration::from_secs(1)).await;
+                                    let signature = match Signature::from_str(&sig_info.signature) {
+                                        Ok(sig) => sig,
+                                        Err(e) => {
+                                            error!("invalid_signature_format::{}::error::{:?}", sig_info.signature, e);
+                                            continue;
+                                        },
+                                    };
+
+                                    if let Err(e) = signature_sender.try_send(signature) {
+                                        debug!("signature_channel_closed::likely_cancelled::error::{:?}", e);
+                                        return;
+                                    }
                                 }
+
+                                let start = Instant::now();
+                                let time_taken = start.elapsed().as_millis();
+
+                                metrics.record_histogram("transaction_crawler_signatures_fetch_times_milliseconds", time_taken as f64)
+                                        .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
+
+                                metrics.increment_counter("transaction_crawler_signatures_fetched", signatures.len() as u64).await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
+
+                                return;
                             }
-                        } else {
-                              error!("no_signature_fetcher_providers_available");
-                        return;
+                            Err(e) => {
+                                error!("error_fetching_signatures::provider::{}::account::{}::error::{}", provider_name, account, e);
+
+                                retry_count += 1;
+                                if retry_count >= max_retries {
+                                    error!("max_retries_reached_for_signatures::account::{}", account);
+                                    return;
+                                }
+
+                                // Calculate backoff with jitter
+                                let backoff_delay = calculate_backoff_with_jitter(
+                                    retry_count - 1,
+                                    config.base_retry_delay_ms,
+                                    config.max_retry_delay_ms,
+                                );
+
+                                debug!(
+                                    "retrying_signature_fetch_after_backoff::attempt::{}::delay_ms::{}::account::{}",
+                                    retry_count,
+                                    backoff_delay.as_millis(),
+                                    account
+                                );
+
+                                tokio::time::sleep(backoff_delay).await;
+                            }
+                        }
+                    } else {
+                        error!("no_signature_fetcher_providers_available::account::{}", account);
+                        
+                        retry_count += 1;
+                        if retry_count >= max_retries {
+                            error!("max_retries_reached_no_providers::account::{}", account);
+                            // Close the channel to signal failure
+                            drop(signature_sender);
+                            return;
+                        }
+                        
+                        // Wait and retry with exponential backoff
+                        let backoff_delay = calculate_backoff_with_jitter(
+                            retry_count - 1,
+                            config.base_retry_delay_ms,
+                            config.max_retry_delay_ms,
+                        );
+                        
+                        warn!(
+                            "no_providers_available::retrying_after_backoff::attempt::{}::delay_ms::{}::account::{}", 
+                            retry_count, 
+                            backoff_delay.as_millis(),
+                            account
+                        );
+                        
+                        tokio::time::sleep(backoff_delay).await;
                     }
-                      }
+                }
             }
         }
     })
@@ -328,8 +365,25 @@ fn transaction_fetcher(
                                             provider_name, signature, error_string
                                         );
 
-                                        // Wait 1 second before retry as requested
-                                        if attempt < max_retries - 1 {
+                                        // Check if it's a retryable error
+                                        if is_retryable_error(&error_string) && attempt < max_retries - 1 {
+                                            // Calculate backoff with jitter
+                                            let backoff_delay = calculate_backoff_with_jitter(
+                                                attempt,
+                                                config.base_retry_delay_ms,
+                                                config.max_retry_delay_ms,
+                                            );
+
+                                            debug!(
+                                                "retrying_after_backoff::attempt::{}::delay_ms::{}::signature::{}",
+                                                attempt + 1,
+                                                backoff_delay.as_millis(),
+                                                signature
+                                            );
+
+                                            tokio::time::sleep(backoff_delay).await;
+                                        } else if attempt < max_retries - 1 {
+                                            // Non-retryable error, still do basic retry with fixed delay
                                             tokio::time::sleep(Duration::from_secs(1)).await;
                                         }
                                     },

@@ -175,12 +175,72 @@ impl CreatorHandlerMetadata {
         let rpc_config = self.rpc_config.clone();
 
         tokio::spawn(async move {
-            if let Ok(Some(mut pipeline)) =
-                make_creator_crawler_pipeline(processor, child_token, max_depth, rpc_config).await
-            {
-                if let Err(e) = pipeline.run().await {
-                    error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
-                }
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config).await {
+                Ok(Some(mut pipeline)) => {
+                    if let Err(e) = pipeline.run().await {
+                        error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
+                        // Handle failure by adding to failed queue
+                        processor.handle_pipeline_failure().await;
+                    }
+                },
+                Ok(None) => {
+                    debug!("no_pipeline_created_for_bfs_level::mint::{}", creator_metadata.mint);
+                },
+                Err(e) => {
+                    error!("pipeline_creation_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
+                    // Handle failure by adding to failed queue
+                    processor.handle_pipeline_failure().await;
+                },
+            }
+        });
+        Ok(())
+    }
+
+    async fn process_recovered_account(
+        &self,
+        creator_metadata: Arc<CreatorMetadata>,
+        child_token: CancellationToken,
+        creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+    ) -> Result<()> {
+        let db_engine = self.db.clone();
+        let shutdown_signal = self.shutdown.clone();
+        let (operator_sender, operator_receiver) = mpsc::channel(1000);
+        let rpc_config = self.rpc_config.clone();
+
+        let creator_handler = Arc::new(CreatorHandlerOperator::new(
+            db_engine.clone(),
+            shutdown_signal.clone(),
+            operator_receiver,
+            operator_sender,
+            rpc_config,
+        ));
+
+        let max_depth = creator_metadata.max_depth;
+        let processor = CreatorInstructionProcessor::new(
+            creator_handler.clone(),
+            creator_metadata.clone(),
+            child_token.clone(),
+            creator_analyzer_config.clone(),
+        );
+        let rpc_config = self.rpc_config.clone();
+
+        tokio::spawn(async move {
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config).await {
+                Ok(Some(mut pipeline)) => {
+                    if let Err(e) = pipeline.run().await {
+                        error!("recovery_pipeline_run_failed::mint::{}::error::{}", creator_metadata.mint, e);
+                        // Handle failure by adding to failed queue
+                        processor.handle_pipeline_failure().await;
+                    }
+                },
+                Ok(None) => {
+                    debug!("no_pipeline_created_for_recovery::mint::{}", creator_metadata.mint);
+                },
+                Err(e) => {
+                    error!("recovery_pipeline_creation_failed::mint::{}::error::{}", creator_metadata.mint, e);
+                    // Handle failure by adding to failed queue
+                    processor.handle_pipeline_failure().await;
+                },
             }
         });
         Ok(())
@@ -195,8 +255,16 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
             Some(msg) = creator_handler_metadata.receiver.recv() => {
                 match msg {
                     CreatorHandler::ProcessBfsLevel { creator_metadata, sender, child_token, creator_analyzer_config } => {
-                        if let Err(e) = creator_handler_metadata.process_bfs_level(creator_metadata, sender, child_token, creator_analyzer_config).await {
+                        if let Err(e) = creator_handler_metadata.process_bfs_level(creator_metadata.clone(), sender, child_token, creator_analyzer_config).await {
                             error!("failed_to_process_sender::error::{}", e);
+                            
+                            // Add to failed queue when process_bfs_level fails
+                            let mut failed_metadata = (*creator_metadata).clone();
+                            failed_metadata.mark_as_bfs_failed();
+                            if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
+                                error!("failed_to_add_to_failed_queue_after_bfs_failure::account::{}::error::{}", 
+                                    failed_metadata.address, e);
+                            }
                         }
                     },
                     CreatorHandler::CexConnection { cex, cex_connection, mint } => {
@@ -206,11 +274,26 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             error!("cex_failed::{}::mint::{}::error::{}", cex.clone().name, mint, e);
                         }
                     },
+                    CreatorHandler::ProcessRecoveredAccount { creator_metadata, child_token, creator_analyzer_config } => {
+                        if let Err(e) = creator_handler_metadata.process_recovered_account(
+                            creator_metadata.clone(), child_token, creator_analyzer_config
+                        ).await {
+                            error!("failed_to_process_recovered_account::error::{}", e);
+                            
+                            // Add back to failed queue when recovery fails
+                            let mut failed_metadata = (*creator_metadata).clone();
+                            failed_metadata.mark_as_failed();
+                            if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
+                                error!("failed_to_requeue_failed_account_after_recovery_failure::account::{}::error::{}", 
+                                    failed_metadata.address, e);
+                            }
+                        }
+                    },
                 }
             },
             else => {
                 // Channel closed, exit gracefully
-                info!("creator_handler_metadata::channel_closed::exiting");
+                debug!("creator_handler_metadata::channel_closed::exiting");
                 break;
             }
         }
@@ -255,6 +338,14 @@ impl CreatorHandlerOperator {
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
     ) -> Result<()> {
         let wallet_connection = creator_metadata.wallet_connection.clone();
+        
+        // Get the depth of the receiver (the account being analyzed) from BFS state
+        let receiver_depth = if let Some((depth, _)) = creator_metadata.get_visited(&receiver).await {
+            depth
+        } else {
+            // If receiver is not visited yet (shouldn't happen in normal flow), use 0
+            0
+        };
 
         if let Some(cex_name) = Cex::get_exchange_name(sender) {
             let cex = Cex::new(cex_name, sender);
@@ -283,7 +374,7 @@ impl CreatorHandlerOperator {
                 error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
             }
 
-            info!("cex_found_and_stored::cex::{}::mint::{}", cex.name, creator_metadata.mint);
+            info!("cex_found_and_stored::cex::{}::mint::{}::depth::{}", cex.name, creator_metadata.mint, receiver_depth);
             child_token.cancel();
             return Ok(());
         }
@@ -303,7 +394,7 @@ impl CreatorHandlerOperator {
                     cex_found.name, e
                 ))));
             }
-            info!("sender_cex_connection_found::mint::{}::cex::{}", creator_metadata.mint, cex_found.name);
+            info!("sender_cex_connection_found::mint::{}::cex::{}::depth::{}", creator_metadata.mint, cex_found.name, receiver_depth);
             child_token.cancel();
             return Ok(());
         }
@@ -342,6 +433,16 @@ impl CreatorHandlerOperator {
         self.db.redis.queue.get_pending_account_counts().await.map_err(|e| {
             error!("failed_to_get_pending_account_counts: {}", e);
             err_with_loc!(HandlerError::RedisQueryError(format!("Failed to get pending account counts: {}", e)))
+        })
+    }
+
+    pub async fn add_failed_account(
+        &self,
+        account: &CreatorMetadata,
+    ) -> Result<()> {
+        self.db.redis.queue.add_failed_account(account).await.map_err(|e| {
+            error!("failed_to_add_failed_account: {}", e);
+            err_with_loc!(HandlerError::RedisQueryError(format!("Failed to add failed account: {}", e)))
         })
     }
 

@@ -33,4 +33,9 @@ pub enum CreatorHandler {
         cex_connection: SharedCreatorCexConnectionGraph,
         mint: Pubkey,
     },
+    ProcessRecoveredAccount {
+        creator_metadata: Arc<CreatorMetadata>,
+        child_token: CancellationToken,
+        creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+    },
 }

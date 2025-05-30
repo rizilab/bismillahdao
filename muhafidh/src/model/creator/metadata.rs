@@ -9,6 +9,16 @@ use solana_pubkey::Pubkey;
 use tokio::sync::RwLock;
 
 use super::graph::SharedCreatorCexConnectionGraph;
+use crate::storage::redis::model::NewTokenCache;
+
+// Define account status for different processing stages
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum AccountStatus {
+    NewAccount,  // Fresh account from new token
+    Unprocessed, // Account saved due to buffer overflow
+    Failed,      // Failed due to rate limit or RPC errors
+    BfsQueue,    // Failed during BFS processing
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct SharedBfsState {
@@ -37,12 +47,29 @@ impl SharedBfsState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatorMetadata {
-    pub mint: Pubkey,
-    pub address: Pubkey,
+    // Token information
+    pub mint: Pubkey, // The token mint address
+    pub token_name: String,
+    pub token_symbol: String,
+    pub token_uri: String,
+
+    // Account information
+    pub address: Pubkey,          // The creator/account being analyzed
+    pub depth: usize,             // Current depth in BFS
+    pub original_creator: Pubkey, // Original creator of the token
+
+    // Processing metadata
+    pub created_at: u64,
+    pub latest_update: u64,
+    pub retry_count: usize,
+    pub status: AccountStatus,
+
+    // Analysis results
     pub total_received: f64,
     pub cex_sources: Vec<Pubkey>,
     pub cex_updated_at: u64,
     pub wallet_connection: SharedCreatorCexConnectionGraph,
+
     // BFS state - using SharedBfsState for async mutability
     #[serde(skip)]
     pub bfs_state: SharedBfsState,
@@ -62,10 +89,20 @@ impl CreatorMetadata {
         wallet_connection.add_node(address, false).await;
 
         let bfs_state = SharedBfsState::new(address);
+        let now = chrono::Utc::now().timestamp() as u64;
 
         Self {
             mint,
+            token_name: String::new(),
+            token_symbol: String::new(),
+            token_uri: String::new(),
             address,
+            depth: 0,
+            original_creator: address,
+            created_at: now,
+            latest_update: now,
+            retry_count: 0,
+            status: AccountStatus::NewAccount,
             total_received,
             cex_sources,
             cex_updated_at,
@@ -73,6 +110,42 @@ impl CreatorMetadata {
             bfs_state,
             max_depth,
         }
+    }
+
+    // Create from NewTokenCache
+    pub async fn from_token(
+        token: NewTokenCache,
+        max_depth: usize,
+    ) -> Self {
+        let mut metadata = Self::new(token.mint, token.creator, max_depth).await;
+        metadata.token_name = token.name;
+        metadata.token_symbol = token.symbol;
+        metadata.token_uri = token.uri;
+        metadata.created_at = token.created_at;
+        
+        // Ensure the initial creator is marked as visited at depth 0
+        metadata.mark_visited(token.creator, 0, vec![token.creator]).await;
+        
+        metadata
+    }
+
+    // Mark as failed and increment retry count
+    pub fn mark_as_failed(&mut self) {
+        self.retry_count += 1;
+        self.status = AccountStatus::Failed;
+        self.latest_update = chrono::Utc::now().timestamp() as u64;
+    }
+
+    // Mark as unprocessed (for buffer overflow)
+    pub fn mark_as_unprocessed(&mut self) {
+        self.status = AccountStatus::Unprocessed;
+        self.latest_update = chrono::Utc::now().timestamp() as u64;
+    }
+
+    // Mark as BFS queue (failed during BFS)
+    pub fn mark_as_bfs_failed(&mut self) {
+        self.status = AccountStatus::BfsQueue;
+        self.latest_update = chrono::Utc::now().timestamp() as u64;
     }
 
     // Helper methods for BFS operations
@@ -119,5 +192,34 @@ impl CreatorMetadata {
         address: &Pubkey,
     ) -> bool {
         self.bfs_state.visited_addresses.read().await.contains_key(address)
+    }
+}
+
+// Implement From trait for NewTokenCache
+impl From<NewTokenCache> for CreatorMetadata {
+    fn from(token: NewTokenCache) -> Self {
+        // Note: This is a sync version, for async use from_token method
+        let bfs_state = SharedBfsState::new(token.creator);
+        let now = chrono::Utc::now().timestamp() as u64;
+
+        Self {
+            mint: token.mint,
+            token_name: token.name,
+            token_symbol: token.symbol,
+            token_uri: token.uri,
+            address: token.creator,
+            depth: 0,
+            original_creator: token.creator,
+            created_at: token.created_at,
+            latest_update: now,
+            retry_count: 0,
+            status: AccountStatus::NewAccount,
+            total_received: 0.0,
+            cex_sources: Vec::new(),
+            cex_updated_at: 0,
+            wallet_connection: SharedCreatorCexConnectionGraph::new(),
+            bfs_state,
+            max_depth: 0, // This should be set later
+        }
     }
 }

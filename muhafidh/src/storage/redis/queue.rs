@@ -11,10 +11,10 @@ use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
 
-use super::model::AccountToAnalyze;
 use crate::RedisClientError;
 use crate::Result;
 use crate::err_with_loc;
+use crate::model::creator::metadata::CreatorMetadata;
 use crate::storage::redis::RedisPool;
 
 #[derive(Clone)]
@@ -79,7 +79,7 @@ impl TokenMetadataQueue {
     // Add an account to the unprocessed list
     pub async fn add_unprocessed_account(
         &self,
-        account: &AccountToAnalyze,
+        account: &CreatorMetadata,
     ) -> Result<()> {
         let mut conn = self.get_connection().await?;
         let json = serde_json::to_string(account).map_err(|e| {
@@ -97,14 +97,14 @@ impl TokenMetadataQueue {
                 err_with_loc!(RedisClientError::RedisError(e))
             })?;
 
-        debug!("redis_add_unprocessed_account_done::account::{}", account.account);
+        debug!("redis_add_unprocessed_account_done::account::{}", account.address);
         Ok(())
     }
 
     // Add an account to the failed list (high priority for retry)
     pub async fn add_failed_account(
         &self,
-        failed: &AccountToAnalyze,
+        failed: &CreatorMetadata,
     ) -> Result<()> {
         let mut conn = self.get_connection().await?;
         let json = serde_json::to_string(failed).map_err(|e| {
@@ -122,13 +122,13 @@ impl TokenMetadataQueue {
                 err_with_loc!(RedisClientError::RedisError(e))
             })?;
 
-        debug!("redis_add_failed_account_done::account::{}", failed.account);
+        debug!("redis_add_failed_account_done::account::{}", failed.address);
         Ok(())
     }
 
     // Get the next account from the failed list
     // We prioritize failed accounts over unprocessed ones for retry
-    pub async fn get_next_failed_account(&self) -> Result<Option<AccountToAnalyze>> {
+    pub async fn get_next_failed_account(&self) -> Result<Option<CreatorMetadata>> {
         let mut conn = self.get_connection().await?;
 
         let json: Option<String> = redis::cmd("LPOP")
@@ -153,7 +153,7 @@ impl TokenMetadataQueue {
     }
 
     // Get the next account from the unprocessed list
-    pub async fn get_next_unprocessed_account(&self) -> Result<Option<AccountToAnalyze>> {
+    pub async fn get_next_unprocessed_account(&self) -> Result<Option<CreatorMetadata>> {
         let mut conn = self.get_connection().await?;
 
         let json: Option<String> = redis::cmd("LPOP")

@@ -240,9 +240,10 @@ impl RpcConfig {
             // Rate limited, try next provider or wait
             attempts += 1;
             if attempts >= providers_count {
-                warn!("all_providers_rate_limited_for_role::{:?}::waiting_3_second", role);
+                debug!("all_providers_rate_limited_for_role::{:?}::waiting_3_second", role);
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 attempts = 0;
+                continue;
             }
         }
     }

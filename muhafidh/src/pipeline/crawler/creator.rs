@@ -16,7 +16,7 @@ use crate::pipeline::processor::creator::CreatorInstructionProcessor;
 use crate::rpc::config::RpcConfig;
 
 pub async fn make_creator_crawler_pipeline(
-    processor: CreatorInstructionProcessor,
+    mut processor: CreatorInstructionProcessor,
     child_token: CancellationToken,
     max_depth: usize,
     rpc_config: Arc<RpcConfig>,
@@ -37,7 +37,6 @@ pub async fn make_creator_crawler_pipeline(
         warn!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
         return Ok(None);
     }
-    creator_metadata.add_to_history(analyzed_account).await;
 
     let rpc_crawler = RpcTransactionAnalyzer::new(
         rpc_config,
@@ -46,6 +45,9 @@ pub async fn make_creator_crawler_pipeline(
         Some(CommitmentConfig::confirmed()),
         creator_analyzer_config,
     );
+
+    creator_metadata.add_to_history(analyzed_account).await;
+    processor.set_creator(creator_metadata.clone());
 
     let pipeline = Pipeline::builder()
         .datasource(rpc_crawler)
