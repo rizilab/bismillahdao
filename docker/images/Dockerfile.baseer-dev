@@ -32,9 +32,9 @@ COPY justfile /app/justfile
 
 # install backend dependencies
 WORKDIR /app/muhafidh
-RUN cargo build --release --bin raqib
+RUN cargo build --release --bin baseer
 
 # CMD ["watchexec", "-i", "./**/target", "-w", "src", "-w", "config", "-e", "rs","--project-origin", ".", "-r", "just", "run"]
 
-CMD ["just", "run-raqib"]
+CMD ["just", "run-baseer"]
 #CMD ["sleep", "infinity"]
