@@ -24,7 +24,9 @@ services:
         - action: sync
           path: ./../../../muhafidh/Cargo.toml
           target: /app/muhafidh/Cargo.toml
-
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - muhafidh_cargo_cache:/usr/local/cargo/registry
       - muhafidh_sccache:/sccache
