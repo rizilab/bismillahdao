@@ -32,6 +32,8 @@ pub enum CreatorHandler {
         cex: Cex,
         cex_connection: SharedCreatorCexConnectionGraph,
         mint: Pubkey,
+        name: String,
+        uri: String,
     },
     ProcessRecoveredAccount {
         creator_metadata: Arc<CreatorMetadata>,

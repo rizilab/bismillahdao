@@ -48,6 +48,8 @@ impl CreatorHandlerMetadata {
         cex: Cex,
         connection_graph: SharedCreatorCexConnectionGraph,
         mint: Pubkey,
+        name: String,
+        uri: String,
     ) -> Result<()> {
         // Update the token record with CEX source
         let cex_sources = vec![cex.address];
@@ -127,6 +129,8 @@ impl CreatorHandlerMetadata {
         // Publish event
         let event_data = serde_json::json!({
           "mint": mint.to_string(),
+          "name": name,
+          "uri": uri,
           "cex_name": cex.name.to_string(),
           "cex_address": cex.address.to_string(),
           "cex_updated_at": cex_updated_at,
@@ -267,9 +271,9 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             }
                         }
                     },
-                    CreatorHandler::CexConnection { cex, cex_connection, mint } => {
+                    CreatorHandler::CexConnection { cex, cex_connection, mint, name, uri } => {
                         if let Err(e) = creator_handler_metadata.process_cex_connection(
-                            cex.clone(), cex_connection, mint
+                            cex.clone(), cex_connection, mint, name, uri
                         ).await {
                             error!("cex_failed::{}::mint::{}::error::{}", cex.clone().name, mint, e);
                         }
@@ -356,6 +360,8 @@ impl CreatorHandlerOperator {
                 cex: cex.clone(),
                 cex_connection: wallet_connection,
                 mint: creator_metadata.mint,
+                name: creator_metadata.token_name.clone(),
+                uri: creator_metadata.token_uri.clone(),
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
@@ -390,6 +396,8 @@ impl CreatorHandlerOperator {
                 cex: cex_found.clone(),
                 cex_connection: wallet_connection,
                 mint: creator_metadata.mint,
+                name: creator_metadata.token_name.clone(),
+                uri: creator_metadata.token_uri.clone(),
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
