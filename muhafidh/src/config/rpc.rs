@@ -10,7 +10,6 @@ use serde::Serialize;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
 use tokio::sync::RwLock;
-use tracing::debug;
 use tracing::warn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,7 +201,6 @@ impl RpcConfig {
             let provider = providers[index];
 
             let mut can_use_provider = false;
-            let mut current_req_count = 0;
 
             {
                 // Scope for the RwLockWriteGuard
@@ -222,17 +220,11 @@ impl RpcConfig {
 
                 if state.request_count < provider.rate_limit {
                     state.request_count += 1;
-                    current_req_count = state.request_count;
                     can_use_provider = true;
                 }
             }
 
             if can_use_provider {
-                debug!(
-                    "using_provider::{}::index::{}::requests_this_second::{}:role::{:?}",
-                    provider.name, index, current_req_count, role
-                );
-
                 let client = RpcClient::new_with_commitment(provider.get_http_url(), commitment);
                 return Some((client, provider.name.clone()));
             }
@@ -240,6 +232,7 @@ impl RpcConfig {
             // Rate limited, try next provider or wait
             attempts += 1;
             if attempts >= providers_count {
+                #[cfg(feature = "deep-trace")]
                 debug!("all_providers_rate_limited_for_role::{:?}::waiting_3_second", role);
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 attempts = 0;

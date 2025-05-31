@@ -31,8 +31,8 @@ use tracing::error;
 use tracing::warn;
 
 use crate::config::CreatorAnalyzerConfig;
-use crate::rpc::config::RpcConfig;
-use crate::rpc::config::RpcProviderRole;
+use crate::config::RpcConfig;
+use crate::config::RpcProviderRole;
 use crate::utils::calculate_backoff_with_jitter;
 use crate::utils::is_retryable_error;
 
@@ -251,7 +251,7 @@ fn signature_fetcher(
                         }
                     } else {
                         error!("no_signature_fetcher_providers_available::account::{}", account);
-                        
+
                         retry_count += 1;
                         if retry_count >= max_retries {
                             error!("max_retries_reached_no_providers::account::{}", account);
@@ -259,21 +259,21 @@ fn signature_fetcher(
                             drop(signature_sender);
                             return;
                         }
-                        
+
                         // Wait and retry with exponential backoff
                         let backoff_delay = calculate_backoff_with_jitter(
                             retry_count - 1,
                             config.base_retry_delay_ms,
                             config.max_retry_delay_ms,
                         );
-                        
+
                         warn!(
-                            "no_providers_available::retrying_after_backoff::attempt::{}::delay_ms::{}::account::{}", 
-                            retry_count, 
+                            "no_providers_available::retrying_after_backoff::attempt::{}::delay_ms::{}::account::{}",
+                            retry_count,
                             backoff_delay.as_millis(),
                             account
                         );
-                        
+
                         tokio::time::sleep(backoff_delay).await;
                     }
                 }
@@ -311,8 +311,6 @@ fn transaction_fetcher(
 
                     async move {
                         let start = Instant::now();
-                        debug!("fetching_transaction::signature::{}", signature);
-
                         let max_retries = config.max_retries;
 
                         // Try with retries
@@ -353,9 +351,11 @@ fn transaction_fetcher(
                                             || error_string.contains("Transaction version (0) is not supported")
                                             || error_string.contains("not found")
                                         {
+                                            // TODO: remove this once we have a better way to handle this. There should
+                                            // be a store of signatures to be processed later.
                                             warn!(
-                                                "transaction_not_available::signature::{}::provider::{}::skipping",
-                                                signature, provider_name
+                                                "transaction_not_available::signature::{}::provider::{}::error::{}",
+                                                signature, provider_name, error_string
                                             );
                                             return None;
                                         }
@@ -374,6 +374,7 @@ fn transaction_fetcher(
                                                 config.max_retry_delay_ms,
                                             );
 
+                                            #[cfg(feature = "deep-trace")]
                                             debug!(
                                                 "retrying_after_backoff::attempt::{}::delay_ms::{}::signature::{}",
                                                 attempt + 1,
@@ -419,6 +420,7 @@ fn transaction_fetcher(
 
         tokio::select! {
             _ = cancellation_token.cancelled() => {
+                #[cfg(feature = "deep-trace")]
                 debug!("cancellation_detected_in_transaction_fetcher");
             }
             _ = fetch_stream_task => {}

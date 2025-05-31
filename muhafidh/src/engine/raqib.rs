@@ -11,7 +11,7 @@ use crate::error::EngineError;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::handler::token::metadata::TokenHandlerMetadataOperator;
 use crate::pipeline::subscriber::pumpfun::make_pumpfun_subscriber_pipeline;
-use crate::setup_tracing;
+use crate::tracing::file::setup_tracing;
 use crate::storage::StorageEngine;
 use crate::storage::make_storage_engine;
 use crate::storage::postgres::PostgresStorage;

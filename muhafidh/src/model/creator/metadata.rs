@@ -122,10 +122,10 @@ impl CreatorMetadata {
         metadata.token_symbol = token.symbol;
         metadata.token_uri = token.uri;
         metadata.created_at = token.created_at;
-        
+
         // Ensure the initial creator is marked as visited at depth 0
         metadata.mark_visited(token.creator, 0, vec![token.creator]).await;
-        
+
         metadata
     }
 

@@ -13,7 +13,7 @@ use crate::Result;
 use crate::pipeline::datasource::rpc_creator_analyzer::Filters;
 use crate::pipeline::datasource::rpc_creator_analyzer::RpcTransactionAnalyzer;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::rpc::config::RpcConfig;
+use crate::config::RpcConfig;
 
 pub async fn make_creator_crawler_pipeline(
     mut processor: CreatorInstructionProcessor,
@@ -34,6 +34,7 @@ pub async fn make_creator_crawler_pipeline(
 
     if depth > max_depth {
         child_token.cancel();
+        #[cfg(feature = "dev")]
         debug!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
         return Ok(None);
     }

@@ -8,8 +8,8 @@ use carbon_core::processor::Processor;
 use carbon_system_program_decoder::instructions::SystemProgramInstruction;
 use carbon_system_program_decoder::instructions::transfer_sol::TransferSol;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
 use tracing::debug;
+use tracing::error;
 
 use crate::config::CreatorAnalyzerConfig;
 use crate::handler::token::creator::CreatorHandlerOperator;
@@ -43,7 +43,10 @@ impl CreatorInstructionProcessor {
         self.creator_metadata.clone()
     }
 
-    pub fn set_creator(&mut self, creator_metadata: Arc<CreatorMetadata>) {
+    pub fn set_creator(
+        &mut self,
+        creator_metadata: Arc<CreatorMetadata>,
+    ) {
         self.creator_metadata = creator_metadata;
     }
 
@@ -60,7 +63,7 @@ impl CreatorInstructionProcessor {
 
         let mut failed_metadata = (*self.creator_metadata).clone();
         failed_metadata.mark_as_failed();
-        
+
         debug!(
             "adding_to_failed_queue::mint::{}::account::{}::retry_count::{}::status::{:?}",
             failed_metadata.mint, failed_metadata.address, failed_metadata.retry_count, failed_metadata.status
@@ -108,7 +111,9 @@ impl Processor for CreatorInstructionProcessor {
                 let min_transfer_amount = self.creator_analyzer_config.min_transfer_amount;
 
                 if let Some(accounts) = accounts {
-                    if amount > min_transfer_amount && accounts.source != analyzed_account && accounts.destination == analyzed_account
+                    if amount > min_transfer_amount
+                        && accounts.source != analyzed_account
+                        && accounts.destination == analyzed_account
                     {
                         let timestamp = meta
                             .transaction_metadata

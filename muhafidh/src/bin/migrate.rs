@@ -9,7 +9,7 @@
 
 use muhafidh::config::load_config;
 use muhafidh::error::Result;
-use muhafidh::setup_tracing;
+use muhafidh::tracing::file::setup_tracing;
 use muhafidh::storage::run_database_migrations;
 use tracing::info;
 

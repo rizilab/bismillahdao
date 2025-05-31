@@ -18,7 +18,7 @@ use crate::model::creator::graph::SharedCreatorCexConnectionGraph;
 use crate::model::creator::metadata::CreatorMetadata;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::rpc::config::RpcConfig;
+use crate::config::RpcConfig;
 use crate::storage::StorageEngine;
 
 pub struct CreatorHandlerMetadata {
@@ -257,12 +257,12 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                     CreatorHandler::ProcessBfsLevel { creator_metadata, sender, child_token, creator_analyzer_config } => {
                         if let Err(e) = creator_handler_metadata.process_bfs_level(creator_metadata.clone(), sender, child_token, creator_analyzer_config).await {
                             error!("failed_to_process_sender::error::{}", e);
-                            
+
                             // Add to failed queue when process_bfs_level fails
                             let mut failed_metadata = (*creator_metadata).clone();
                             failed_metadata.mark_as_bfs_failed();
                             if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
-                                error!("failed_to_add_to_failed_queue_after_bfs_failure::account::{}::error::{}", 
+                                error!("failed_to_add_to_failed_queue_after_bfs_failure::account::{}::error::{}",
                                     failed_metadata.address, e);
                             }
                         }
@@ -279,12 +279,12 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             creator_metadata.clone(), child_token, creator_analyzer_config
                         ).await {
                             error!("failed_to_process_recovered_account::error::{}", e);
-                            
+
                             // Add back to failed queue when recovery fails
                             let mut failed_metadata = (*creator_metadata).clone();
                             failed_metadata.mark_as_failed();
                             if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
-                                error!("failed_to_requeue_failed_account_after_recovery_failure::account::{}::error::{}", 
+                                error!("failed_to_requeue_failed_account_after_recovery_failure::account::{}::error::{}",
                                     failed_metadata.address, e);
                             }
                         }
@@ -338,7 +338,7 @@ impl CreatorHandlerOperator {
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
     ) -> Result<()> {
         let wallet_connection = creator_metadata.wallet_connection.clone();
-        
+
         // Get the depth of the receiver (the account being analyzed) from BFS state
         let receiver_depth = if let Some((depth, _)) = creator_metadata.get_visited(&receiver).await {
             depth
@@ -374,7 +374,10 @@ impl CreatorHandlerOperator {
                 error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
             }
 
-            info!("cex_found_and_stored::cex::{}::mint::{}::depth::{}", cex.name, creator_metadata.mint, receiver_depth);
+            info!(
+                "cex_found_and_stored::cex::{}::mint::{}::depth::{}",
+                cex.name, creator_metadata.mint, receiver_depth
+            );
             child_token.cancel();
             return Ok(());
         }
@@ -394,7 +397,10 @@ impl CreatorHandlerOperator {
                     cex_found.name, e
                 ))));
             }
-            info!("sender_cex_connection_found::mint::{}::cex::{}::depth::{}", creator_metadata.mint, cex_found.name, receiver_depth);
+            info!(
+                "sender_cex_connection_found::mint::{}::cex::{}::depth::{}",
+                creator_metadata.mint, cex_found.name, receiver_depth
+            );
             child_token.cancel();
             return Ok(());
         }

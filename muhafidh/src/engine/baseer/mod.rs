@@ -12,8 +12,8 @@ use crate::config::Config;
 use crate::config::load_config;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::handler::token::creator::CreatorHandlerOperator;
-use crate::rpc::config::RpcConfig;
-use crate::setup_tracing;
+use crate::config::RpcConfig;
+use crate::tracing::file::setup_tracing;
 use crate::storage::StorageEngine;
 use crate::storage::make_storage_engine;
 
