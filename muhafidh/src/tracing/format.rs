@@ -42,8 +42,7 @@ where
 
         write!(
             writer,
-            "{} {}::{}::{}::{}::{}::",
-            metadata.target(),
+            "{} {}::{}::{}::{}::",
             metadata.level(),
             timestamp,
             self.engine_name,
