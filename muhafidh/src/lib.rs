@@ -8,6 +8,7 @@ pub mod model;
 pub mod pipeline;
 pub mod storage;
 pub mod utils;
+pub mod tracing;
 
 pub use engine::*;
 pub use error::*;

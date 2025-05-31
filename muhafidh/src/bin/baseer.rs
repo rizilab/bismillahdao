@@ -15,6 +15,6 @@ use muhafidh::error::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  Baseer::run().await?;
-  Ok(())
+    Baseer::run().await?;
+    Ok(())
 }

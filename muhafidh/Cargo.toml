@@ -1,7 +1,10 @@
 [package]
 name = "muhafidh"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+
+[lib]
+name = "muhafidh"
 
 [dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
@@ -24,6 +27,7 @@ dotenvy = "0.15.7"
 clap = { version = "4.5.28", features = ["derive"] }
 petgraph = { version = "0.8.1", features = ["serde-1"] }
 toml = "0.8.22"
+rand = "0.9.1"
 
 # Logging
 tracing = "0.1.41"
@@ -89,14 +93,3 @@ default = ["prod"]
 dev = []
 prod = []
 deep-trace = []
-[[bin]]
-name = "raqib"
-path = "src/bin/raqib.rs"
-
-[[bin]]
-name = "baseer"
-path = "src/bin/baseer.rs"
-
-[[bin]]
-name = "siraaj"
-path = "src/bin/siraaj.rs"

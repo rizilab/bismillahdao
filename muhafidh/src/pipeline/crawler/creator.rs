@@ -1,57 +1,63 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use carbon_core::pipeline::Pipeline;
 use carbon_core::pipeline::ShutdownStrategy;
 use carbon_log_metrics::LogMetrics;
 use carbon_system_program_decoder::SystemProgramDecoder;
+use solana_sdk::commitment_config::CommitmentConfig;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
+use tracing::warn;
 
-use crate::handler::token::creator::CreatorHandlerOperator;
+use crate::Result;
 use crate::pipeline::datasource::rpc_creator_analyzer::Filters;
 use crate::pipeline::datasource::rpc_creator_analyzer::RpcTransactionAnalyzer;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::storage::redis::model::NewTokenCache;
-use crate::Result;
+use crate::config::RpcConfig;
 
-pub fn make_creator_crawler_pipeline(
-  rpc_url: String,
-  creator_handler: Arc<CreatorHandlerOperator>,
-  token: NewTokenCache,
-  cancellation_token: CancellationToken,
-  max_depth: usize,
-) -> Result<Pipeline> {
-  debug!("rpc_url: {}", rpc_url);
+pub async fn make_creator_crawler_pipeline(
+    mut processor: CreatorInstructionProcessor,
+    child_token: CancellationToken,
+    max_depth: usize,
+    rpc_config: Arc<RpcConfig>,
+) -> Result<Option<Pipeline>> {
+    let filters = Filters::new(None, None, None);
+    let creator_metadata = processor.get_creator();
+    let (analyzed_account, depth, _) = match creator_metadata.pop_from_queue().await {
+        Some(item) => item,
+        None => {
+            warn!("no_items_in_queue::mint::{}", creator_metadata.mint);
+            return Ok(None);
+        },
+    };
+    let creator_analyzer_config = processor.get_creator_analyzer_config();
 
-  // Get max_concurrent_requests from config
-  let config = crate::config::load_config("Config.toml")?;
-  let max_concurrent_requests = config.creator_analyzer.max_concurrent_requests;
+    if depth > max_depth {
+        child_token.cancel();
+        #[cfg(feature = "dev")]
+        debug!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
+        return Ok(None);
+    }
 
-  let filters = Filters::new(None, None, None);
+    let rpc_crawler = RpcTransactionAnalyzer::new(
+        rpc_config,
+        analyzed_account,
+        filters,
+        Some(CommitmentConfig::confirmed()),
+        creator_analyzer_config,
+    );
 
-  let rpc_crawler = RpcTransactionAnalyzer::new(
-    rpc_url,
-    token.creator,
-    500,
-    Duration::from_secs(1),
-    filters,
-    None,
-    max_concurrent_requests,
-  );
+    creator_metadata.add_to_history(analyzed_account).await;
+    processor.set_creator(creator_metadata.clone());
 
-  let mut processor =
-    CreatorInstructionProcessor::new(token.mint, creator_handler.clone(), cancellation_token.clone(), max_depth);
+    let pipeline = Pipeline::builder()
+        .datasource(rpc_crawler)
+        .datasource_cancellation_token(child_token.clone())
+        .metrics(Arc::new(LogMetrics::new()))
+        .shutdown_strategy(ShutdownStrategy::Immediate)
+        .instruction(SystemProgramDecoder, processor)
+        .build()?;
+    debug!("pipeline_built_successfully::mint::{}", creator_metadata.mint);
 
-  processor.set_creator(token.creator);
-
-  let pipeline = Pipeline::builder()
-    .datasource(rpc_crawler)
-    .datasource_cancellation_token(cancellation_token.clone())
-    .metrics(Arc::new(LogMetrics::new()))
-    .shutdown_strategy(ShutdownStrategy::Immediate)
-    .instruction(SystemProgramDecoder, processor)
-    .build()?;
-
-  Ok(pipeline)
+    Ok(Some(pipeline))
 }

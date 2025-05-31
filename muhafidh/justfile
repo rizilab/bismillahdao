@@ -16,6 +16,9 @@ release-raqib:
 # Run tests
 test-raqib:
   cargo test --bin raqib
+  
+run-baseer:
+  cargo run --release --bin baseer
 
 # Clean the build artifacts
 clean:

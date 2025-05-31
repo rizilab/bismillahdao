@@ -14,6 +14,6 @@ use muhafidh::error::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  Siraaj::run().await?;
-  Ok(())
+    Siraaj::run().await?;
+    Ok(())
 }

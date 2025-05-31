@@ -23,7 +23,7 @@ COPY muhafidh /app/muhafidh
 COPY justfile /app/justfile
 
 # install backend dependencies
-WORKDIR /app/muhafidh,
+WORKDIR /app/muhafidh
 RUN cargo build
 
 CMD ["watchexec", "-i", "./**/target", "-w", "src", "-w", "config", "-e", "rs","--project-origin", ".", "-r", "just", "run"]

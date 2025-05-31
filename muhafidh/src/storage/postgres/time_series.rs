@@ -26,125 +26,126 @@ use std::sync::Arc;
 use tracing::error;
 
 use crate::err_with_loc;
-use crate::error::postgres::PostgresClientError;
 use crate::error::Result;
+use crate::error::postgres::PostgresClientError;
 use crate::storage::postgres::PostgresPool;
 use crate::storage::postgres::PostgresStorage;
 
 #[derive(Debug, Clone)]
 pub struct TimeSeriesDb {
-  pub pool: Arc<PostgresPool>,
+    pub pool: Arc<PostgresPool>,
 }
 
 #[async_trait::async_trait]
 impl PostgresStorage for TimeSeriesDb {
-  fn new(pool: Arc<PostgresPool>) -> Self { Self { pool } }
+    fn new(pool: Arc<PostgresPool>) -> Self {
+        Self {
+            pool,
+        }
+    }
 
-  async fn health_check(&self) -> Result<()> {
-    let conn = self.pool.get().await.map_err(|e| {
-      error!("failed_to_get_client_pool_connection: {}", e);
-      err_with_loc!(PostgresClientError::PoolError(e))
-    })?;
+    async fn health_check(&self) -> Result<()> {
+        let conn = self.pool.get().await.map_err(|e| {
+            error!("failed_to_get_client_pool_connection: {}", e);
+            err_with_loc!(PostgresClientError::PoolError(e))
+        })?;
 
-    conn.execute("SELECT 1", &[]).await.map_err(|e| {
-      error!("failed_to_health_check: {}", e);
-      err_with_loc!(PostgresClientError::QueryError(format!("failed_to_health_check: {}", e)))
-    })?;
-    Ok(())
-  }
+        conn.execute("SELECT 1", &[]).await.map_err(|e| {
+            error!("failed_to_health_check: {}", e);
+            err_with_loc!(PostgresClientError::QueryError(format!("failed_to_health_check: {}", e)))
+        })?;
+        Ok(())
+    }
 
-  // No need to initialize tables here as this is now handled by migrations
-  async fn initialize(&self) -> Result<()> {
-    // Just do a health check to ensure the database is available
-    self.health_check().await
-  }
+    // No need to initialize tables here as this is now handled by migrations
+    async fn initialize(&self) -> Result<()> {
+        // Just do a health check to ensure the database is available
+        self.health_check().await
+    }
 }
 
 impl TimeSeriesDb {
-  // Add a token price record
-  pub async fn add_token_price(
-    &self,
-    mint: &str,
-    price: u64,
-    timestamp: i64,
-  ) -> Result<()> {
-    let conn = self.pool.get().await.map_err(|e| {
-      error!("failed_to_get_client_pool_connection: {}", e);
-      err_with_loc!(PostgresClientError::PoolError(e))
-    })?;
+    // Add a token price record
+    pub async fn add_token_price(
+        &self,
+        mint: &str,
+        price: u64,
+        timestamp: i64,
+    ) -> Result<()> {
+        let conn = self.pool.get().await.map_err(|e| {
+            error!("failed_to_get_client_pool_connection: {}", e);
+            err_with_loc!(PostgresClientError::PoolError(e))
+        })?;
 
-    conn
-      .execute(
-        "INSERT INTO token_price_history (mint, price, timestamp)
+        conn.execute(
+            "INSERT INTO token_price_history (mint, price, timestamp)
                  VALUES ($1, $2, $3)
                  ON CONFLICT (mint, timestamp) DO UPDATE SET
                  price = EXCLUDED.price",
-        &[&mint, &(price as i64), &timestamp],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_add_token_price: {}", e);
-        err_with_loc!(PostgresClientError::QueryError(format!("failed_to_add_token_price: {}", e)))
-      })?;
+            &[&mint, &(price as i64), &timestamp],
+        )
+        .await
+        .map_err(|e| {
+            error!("failed_to_add_token_price: {}", e);
+            err_with_loc!(PostgresClientError::QueryError(format!("failed_to_add_token_price: {}", e)))
+        })?;
 
-    Ok(())
-  }
+        Ok(())
+    }
 
-  // Add a token volume record
-  pub async fn add_token_volume(
-    &self,
-    mint: &str,
-    volume: u64,
-    timestamp: i64,
-  ) -> Result<()> {
-    let conn = self.pool.get().await.map_err(|e| {
-      error!("failed_to_get_client_pool_connection: {}", e);
-      err_with_loc!(PostgresClientError::PoolError(e))
-    })?;
+    // Add a token volume record
+    pub async fn add_token_volume(
+        &self,
+        mint: &str,
+        volume: u64,
+        timestamp: i64,
+    ) -> Result<()> {
+        let conn = self.pool.get().await.map_err(|e| {
+            error!("failed_to_get_client_pool_connection: {}", e);
+            err_with_loc!(PostgresClientError::PoolError(e))
+        })?;
 
-    conn
-      .execute(
-        "INSERT INTO token_volume_history (mint, volume, timestamp)
+        conn.execute(
+            "INSERT INTO token_volume_history (mint, volume, timestamp)
                  VALUES ($1, $2, $3)
                  ON CONFLICT (mint, timestamp) DO UPDATE SET
                  volume = EXCLUDED.volume",
-        &[&mint, &(volume as i64), &timestamp],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_add_token_volume: {}", e);
-        err_with_loc!(PostgresClientError::QueryError(format!("failed_to_add_token_volume: {}", e)))
-      })?;
+            &[&mint, &(volume as i64), &timestamp],
+        )
+        .await
+        .map_err(|e| {
+            error!("failed_to_add_token_volume: {}", e);
+            err_with_loc!(PostgresClientError::QueryError(format!("failed_to_add_token_volume: {}", e)))
+        })?;
 
-    Ok(())
-  }
+        Ok(())
+    }
 
-  // Add a CEX activity record
-  pub async fn add_cex_activity(
-    &self,
-    cex_address: &str,
-    token_count: u64,
-    timestamp: i64,
-  ) -> Result<()> {
-    let conn = self.pool.get().await.map_err(|e| {
-      error!("failed_to_get_client_pool_connection: {}", e);
-      err_with_loc!(PostgresClientError::PoolError(e))
-    })?;
+    // Add a CEX activity record
+    pub async fn add_cex_activity(
+        &self,
+        cex_address: &str,
+        token_count: u64,
+        timestamp: i64,
+    ) -> Result<()> {
+        let conn = self.pool.get().await.map_err(|e| {
+            error!("failed_to_get_client_pool_connection: {}", e);
+            err_with_loc!(PostgresClientError::PoolError(e))
+        })?;
 
-    conn
-      .execute(
-        "INSERT INTO cex_activity_history (cex_address, token_count, timestamp)
+        conn.execute(
+            "INSERT INTO cex_activity_history (cex_address, token_count, timestamp)
                  VALUES ($1, $2, $3)
                  ON CONFLICT (cex_address, timestamp) DO UPDATE SET
                  token_count = cex_activity_history.token_count + EXCLUDED.token_count",
-        &[&cex_address, &(token_count as i64), &timestamp],
-      )
-      .await
-      .map_err(|e| {
-        error!("failed_to_add_cex_activity: {}", e);
-        err_with_loc!(PostgresClientError::QueryError(format!("failed_to_add_cex_activity: {}", e)))
-      })?;
+            &[&cex_address, &(token_count as i64), &timestamp],
+        )
+        .await
+        .map_err(|e| {
+            error!("failed_to_add_cex_activity: {}", e);
+            err_with_loc!(PostgresClientError::QueryError(format!("failed_to_add_cex_activity: {}", e)))
+        })?;
 
-    Ok(())
-  }
+        Ok(())
+    }
 }

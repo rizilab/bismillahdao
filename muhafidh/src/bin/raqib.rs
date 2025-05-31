@@ -14,6 +14,6 @@ use muhafidh::error::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  Raqib::run().await?;
-  Ok(())
+    Raqib::run().await?;
+    Ok(())
 }
