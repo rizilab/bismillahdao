@@ -7,21 +7,25 @@
 //  In the name of Allah, the Most Gracious, the Most Merciful.
 // ─────────────────────────────────────────────────────────────────────────────
 
+use muhafidh::handler::shutdown::ShutdownSignal;
 use muhafidh::config::load_config;
 use muhafidh::error::Result;
-use muhafidh::tracing::file::setup_tracing;
+use muhafidh::tracing::setup_tracing;
 use muhafidh::storage::run_database_migrations;
+use tracing::error;
 use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    setup_tracing("migrate");
-
-    info!("Database Migration Tool starting...");
-
+    let shutdown_signal = ShutdownSignal::new();
     // Load configuration
-    let config = load_config("Config.toml")?;
+    let config = load_config("Config.toml").await?;
+
+    // Initialize logging
+    info!("Initializing logging...");
+    if let Err(e) = setup_tracing(config.clone(), "migrate", shutdown_signal.clone()).await {
+        error!("failed_to_setup_tracing: {}", e);
+    }
 
     // Run migrations
     run_database_migrations("migration-tool", &config).await?;

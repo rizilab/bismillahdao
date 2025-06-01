@@ -11,7 +11,7 @@ use crate::error::EngineError;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::handler::token::metadata::TokenHandlerMetadataOperator;
 use crate::pipeline::subscriber::pumpfun::make_pumpfun_subscriber_pipeline;
-use crate::tracing::file::setup_tracing;
+use crate::tracing::setup_tracing;
 use crate::storage::StorageEngine;
 use crate::storage::make_storage_engine;
 use crate::storage::postgres::PostgresStorage;
@@ -26,15 +26,16 @@ pub struct Raqib {
 impl Raqib {
     pub async fn run() -> Result<()> {
         info!("Starting Raqib (رقيب): The Watchful Guardian");
+        
+        let shutdown_signal = ShutdownSignal::new();
 
-        setup_tracing("raqib");
-
-        let config = load_config("Config.toml")?;
+        let config = load_config("Config.toml").await?;
+        if let Err(e) = setup_tracing(config.clone(), "raqib", shutdown_signal.clone()).await {
+            error!("failed_to_setup_tracing: {}", e);
+        }
 
         let db_engine = Arc::new(make_storage_engine("raqib", &config).await?);
         info!("db_engine::created");
-
-        let shutdown_signal = ShutdownSignal::new();
 
         db_engine.postgres.db.health_check().await?;
         info!("postgres::health_check::ok");

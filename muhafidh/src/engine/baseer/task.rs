@@ -71,7 +71,6 @@ impl Baseer {
                             if let Err(e) = buffer_tx.try_send(token.clone()) {
                                 error!("failed_to_send_token_to_buffer::mint::{}::error::{}", token.mint, e);
                             }
-                            debug!("token_sent_to_buffer::mint::{}", token.mint);
                         }
                     }
                   },

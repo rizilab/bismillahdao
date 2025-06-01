@@ -102,23 +102,6 @@ impl Default for RpcConfig {
 }
 
 impl RpcConfig {
-    pub fn new(
-        providers: Vec<RpcProviderConfig>,
-        fallback_timeout_ms: u64,
-    ) -> Self {
-        let config = Self {
-            providers,
-            fallback_timeout_ms,
-            signature_fetcher_index: Arc::new(AtomicUsize::new(0)),
-            transaction_fetcher_index: Arc::new(AtomicUsize::new(0)),
-            rate_limiters: Arc::new(RwLock::new(HashMap::new())),
-        };
-        // This should be called in an async context after creation if needed,
-        // or the new function should be async. For now, assuming init_runtime_state
-        // will be called explicitly in an async context post-deserialization.
-        config
-    }
-
     // Initialize runtime state after deserialization
     pub async fn init_runtime_state(&mut self) {
         let mut rate_limiters = self.rate_limiters.write().await;
@@ -132,22 +115,6 @@ impl RpcConfig {
             };
             rate_limiters.insert(provider.name.clone(), state);
         }
-    }
-
-    pub fn get_provider_for_role(
-        &self,
-        role: &RpcProviderRole,
-    ) -> Option<&RpcProviderConfig> {
-        // Find a provider that matches the requested role
-        self.providers.iter().find(|p| match (&p.role, role) {
-            (RpcProviderRole::All, _) => true,
-            (RpcProviderRole::Both, RpcProviderRole::SignatureFetcher) => true,
-            (RpcProviderRole::Both, RpcProviderRole::TransactionFetcher) => true,
-            (RpcProviderRole::SignatureFetcher, RpcProviderRole::SignatureFetcher) => true,
-            (RpcProviderRole::TransactionFetcher, RpcProviderRole::TransactionFetcher) => true,
-            (RpcProviderRole::WebSocketProvider, RpcProviderRole::WebSocketProvider) => true,
-            _ => false,
-        })
     }
 
     pub fn get_all_providers_for_role(
@@ -239,20 +206,6 @@ impl RpcConfig {
                 continue;
             }
         }
-    }
-
-    pub fn get_http_url(&self) -> Vec<String> {
-        let http_providers = self.providers.iter().filter(|p| {
-            matches!(
-                p.role,
-                RpcProviderRole::SignatureFetcher
-                    | RpcProviderRole::TransactionFetcher
-                    | RpcProviderRole::Both
-                    | RpcProviderRole::All
-            )
-        });
-
-        http_providers.map(|p| p.get_http_url()).collect()
     }
 
     pub fn get_ws_url(&self) -> String {

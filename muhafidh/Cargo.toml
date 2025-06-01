@@ -89,7 +89,8 @@ openssl = { version = "0.10", features = ["vendored"] }
 native-tls = { version = "0.2", features = ["vendored"] }
 
 [features]
-default = ["prod"]
+default = ["prod", "discord_trace"]
 dev = []
 prod = []
 deep-trace = []
+discord_trace = []
