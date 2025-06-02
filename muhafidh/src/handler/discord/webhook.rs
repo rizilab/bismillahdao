@@ -140,14 +140,6 @@ impl DiscordWebhookHandlerOperator {
                 }
                 Ok(())
             }
-            &Level::DEBUG => {
-                if target.starts_with("muhafidh::engine::baseer::task") {
-                     if let Err(e) = self.sender.try_send(DiscordHandlerLevel::Debug { message }) {
-                    error!("Failed to send log to Discord: {}", e);
-                    }
-                }
-                Ok(())
-            }
             _ => {
                 Ok(())
             }
