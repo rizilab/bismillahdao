@@ -57,27 +57,18 @@ where
         let metadata = event.metadata();
         let level = metadata.level();
         let target = metadata.target();
-        let file = metadata.file().unwrap_or("unknown");
-        let line = metadata.line().unwrap_or(0);
 
-        // Skip if file is unknown and deep-trace is not enabled (similar to MuhafidhFormat)
-        if file == "unknown" && !cfg!(feature = "deep-trace") {
-            return;
-        }
-
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
+        let utc_timestamp = chrono::Utc::now();
+        let jakarta_timestamp = utc_timestamp.with_timezone(&chrono_tz::Asia::Jakarta);
+        let timestamp = jakarta_timestamp.format("%Y-%m-%d %H:%M:%S");
 
         let mut visitor = MessageVisitor { message: None };
         event.record(&mut visitor);
         let event_message = visitor.message.unwrap_or_else(|| "No message field in event".to_string());
 
         let formatted_message = format!(
-            "{} {}::{}::{}::{}:: {}",
-            level,
+            "{}:: {}",
             timestamp,
-            self.engine_name,
-            file,
-            line,
             event_message
         );
         

@@ -41,9 +41,7 @@ impl DiscordWebhookHandler {
 
         for chunk in chunks {
             let payload = json!({
-                "content": format!("```ansi
-{}
-```", chunk) // Use ansi code block for better formatting
+                "content": format!("{}", chunk) // Use ansi code block for better formatting
             });
 
             let webhook_url = format!(
