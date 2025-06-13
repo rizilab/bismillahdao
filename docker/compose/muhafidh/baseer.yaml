@@ -29,7 +29,7 @@ services:
       - 8.8.4.4
     volumes:
       - muhafidh_cargo_cache:/usr/local/cargo/registry
-      - muhafidh_sccache:/app/sccache
+      - muhafidh_sccache:/sccache
       - muhafidh_target_cache:/app/muhafidh/target
     restart: unless-stopped
     env_file: *env_files

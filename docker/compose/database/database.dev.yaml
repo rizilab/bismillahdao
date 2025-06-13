@@ -27,6 +27,8 @@ services:
     restart: on-failure
     volumes:
       - ./../../volumes/timescaledb/data:/var/lib/postgresql/data
+      - ./../../volumes/timescaledb/migrations/001_extensions.sql:/docker-entrypoint-initdb.d/001_extensions.sql:ro
+      - ./../../volumes/timescaledb/migrations/twitter_monitor_migrations.sql:/docker-entrypoint-initdb.d/002_twitter_monitor.sql:ro
     env_file: *env_files
     environment:
       - POSTGRES_DB=r4gmi

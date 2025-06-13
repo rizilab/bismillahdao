@@ -27,20 +27,12 @@ ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache PROTOC="/usr/bin/protoc"
 
 WORKDIR /app
 COPY muhafidh /app/muhafidh
-COPY docker/sccache/config /app/sccache/config
-COPY docker/sccache/credentials /app/sccache/credentials
-ENV AWS_SHARED_CREDENTIALS_FILE=/app/sccache/credentials
-ENV SCCACHE_BUCKET="bismillahdao-sccache"
-ENV SCCACHE_REGION="auto"
-ENV SCCACHE_ENDPOINT="s3.eu-central-003.backblazeb2.com"
-ENV SCCACHE_S3_USE_SSL=true
-ENV SCCACHE_NO_CREDENTIALS=false
 RUN sed -i '/\[storage_postgres\]/,/\[/{s/^port = [0-9]\+/port = 5432/}' /app/muhafidh/Config.toml
 COPY justfile /app/justfile
 
 # install backend dependencies
 WORKDIR /app/muhafidh
-RUN RUSTC_WRAPPER=sccache cargo build --release --bin raqib
+RUN cargo build --release --bin raqib
 
 # CMD ["watchexec", "-i", "./**/target", "-w", "src", "-w", "config", "-e", "rs","--project-origin", ".", "-r", "just", "run"]
 

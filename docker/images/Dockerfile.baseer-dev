@@ -32,7 +32,7 @@ COPY justfile /app/justfile
 
 # install backend dependencies
 WORKDIR /app/muhafidh
-RUN RUSTC_WRAPPER=sccache cargo build --release --bin baseer
+RUN cargo build --release --bin baseer
 
 # CMD ["watchexec", "-i", "./**/target", "-w", "src", "-w", "config", "-e", "rs","--project-origin", ".", "-r", "just", "run"]
 
