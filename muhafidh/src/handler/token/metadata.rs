@@ -124,6 +124,7 @@ impl TokenHandlerMetadataOperator {
     ) -> Result<()> {
         let token_metadata = TokenMetadata::new(
             accounts.mint,
+            Some(accounts.bonding_curve),
             create_data.name.clone(),
             create_data.symbol.clone(),
             create_data.uri.clone(),

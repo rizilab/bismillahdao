@@ -380,10 +380,10 @@ impl CreatorHandlerOperator {
                 error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
             }
 
-            let cex_url = format!("https://axiom.trade/meme/{}", creator_metadata.mint);
+            let cex_url = format!("https://axiom.trade/meme/{}", creator_metadata.bonding_curve.unwrap_or("<missing>"));
             info!(
-                "cex_found_and_stored::cex::{}::name::{}::depth::{}mint::{}",
-                cex.name, creator_metadata.token_name, receiver_depth, cex_url
+                "cex_found::{}::name::{}::depth::{}::mint::{}::axiom::{}",
+                cex.name, creator_metadata.token_name, receiver_depth, creator_metadata.mint, cex_url
             );
             child_token.cancel();
             return Ok(());

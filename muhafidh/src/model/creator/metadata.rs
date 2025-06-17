@@ -49,6 +49,7 @@ impl SharedBfsState {
 pub struct CreatorMetadata {
     // Token information
     pub mint: Pubkey, // The token mint address
+    pub bonding_curve: Option<Pubkey>,
     pub token_name: String,
     pub token_symbol: String,
     pub token_uri: String,
@@ -79,6 +80,7 @@ pub struct CreatorMetadata {
 impl CreatorMetadata {
     pub async fn new(
         mint: Pubkey,
+        bonding_curve: Option<Pubkey>,
         address: Pubkey,
         max_depth: usize,
     ) -> Self {
@@ -93,6 +95,7 @@ impl CreatorMetadata {
 
         Self {
             mint,
+            bonding_curve,
             token_name: String::new(),
             token_symbol: String::new(),
             token_uri: String::new(),
@@ -117,7 +120,7 @@ impl CreatorMetadata {
         token: NewTokenCache,
         max_depth: usize,
     ) -> Self {
-        let mut metadata = Self::new(token.mint, token.creator, max_depth).await;
+        let mut metadata = Self::new(token.mint, token.bonding_curve, token.creator, max_depth).await;
         metadata.token_name = token.name;
         metadata.token_symbol = token.symbol;
         metadata.token_uri = token.uri;
@@ -204,6 +207,7 @@ impl From<NewTokenCache> for CreatorMetadata {
 
         Self {
             mint: token.mint,
+            bonding_curve: token.bonding_curve,
             token_name: token.name,
             token_symbol: token.symbol,
             token_uri: token.uri,

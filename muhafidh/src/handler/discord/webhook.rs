@@ -132,12 +132,12 @@ impl DiscordWebhookHandlerOperator {
                 }
                 Ok(())
             }
-            &Level::ERROR => {
-                if let Err(e) = self.sender.try_send(DiscordHandlerLevel::Error { message }) {
-                    error!("Failed to send log to Discord: {}", e);
-                }
-                Ok(())
-            }
+            // &Level::ERROR => {
+            //     if let Err(e) = self.sender.try_send(DiscordHandlerLevel::Error { message }) {
+            //         error!("Failed to send log to Discord: {}", e);
+            //     }
+            //     Ok(())
+            // }
             _ => {
                 Ok(())
             }

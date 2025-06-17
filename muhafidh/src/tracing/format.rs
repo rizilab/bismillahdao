@@ -38,7 +38,9 @@ where
             return Ok(());
         }
 
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
+        let utc_timestamp = chrono::Utc::now();
+        let jakarta_timestamp = utc_timestamp.with_timezone(&chrono_tz::Asia::Jakarta);
+        let timestamp = jakarta_timestamp.format("%Y-%m-%d %H:%M:%S");
 
         write!(
             writer,
