@@ -9,21 +9,11 @@ x-env-files: &env_files
     required: false
 
 services:
-  bismillahdao-baseer:
+  bismillahdao-migrate:
     build:
-      dockerfile: ./docker/images/Dockerfile.baseer-dev
+      dockerfile: ./docker/images/Dockerfile.migrate-dev
       context: ./../../../
-    container_name: bismillahdao-baseer
-    develop:
-      watch:
-        - action: sync
-          path: ./../../../muhafidh/src
-          target: /app/muhafidh/src
-          ignore:
-            - ./../../../muhafidh/target/
-        - action: sync
-          path: ./../../../muhafidh/Cargo.toml
-          target: /app/muhafidh/Cargo.toml
+    container_name: bismillahdao-migrate
     dns:
       - 8.8.8.8
       - 8.8.4.4

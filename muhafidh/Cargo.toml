@@ -12,11 +12,12 @@ tokio-retry = "0.3.0"
 tokio-util = "0.7.13"
 anyhow = "1.0.80"
 thiserror = "2.0.12"
-reqwest = { version = "0.12.15", features = ["json", "native-tls-vendored", "blocking", "cookies"] }
+reqwest = { version = "0.12.15", features = ["json", "blocking", "cookies"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
 borsh = "1.5.1"
 chrono = { version = "0.4.39", features = ["serde"] }
+chrono-tz = "0.10.3"
 url = "2.5.4"
 urlencoding = "2.1.2"
 futures = "0.3.30"
@@ -41,11 +42,6 @@ bb8-redis = "0.23.0"
 tokio-postgres = { version = "0.7.13", features = ["with-chrono-0_4"] }
 postgres-native-tls = "0.5.1"
 redis = { version = "0.31.0", features = ["aio","tokio-comp"] }
-
-# TUI
-ratatui = "0.29.0"
-crossterm = "0.29.0"
-color-eyre = "0.6.2"
 
 # Solana
 solana-account = "2.1.6"
@@ -85,11 +81,12 @@ yellowstone-grpc-client = { version = "5.0.0" }
 yellowstone-grpc-proto = { version = "5.0.0" }
 
 # SSL/TLS
-openssl = { version = "0.10", features = ["vendored"] }
-native-tls = { version = "0.2", features = ["vendored"] }
+openssl = { version = "0.10" }
+native-tls = { version = "0.2" }
 
 [features]
-default = ["prod"]
+default = ["prod", "discord_trace"]
 dev = []
 prod = []
 deep-trace = []
+discord_trace = []

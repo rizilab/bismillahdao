@@ -45,3 +45,5 @@ twitter-monitor/
 # Cursor
 .cursor/
 **/.cursor
+
+sccache/credentials

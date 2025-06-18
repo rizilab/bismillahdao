@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tracing::error;
 use tracing::debug;
 use tracing::info;
 
@@ -13,7 +14,7 @@ use crate::config::load_config;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::handler::token::creator::CreatorHandlerOperator;
 use crate::config::RpcConfig;
-use crate::tracing::file::setup_tracing;
+use crate::tracing::setup_tracing;
 use crate::storage::StorageEngine;
 use crate::storage::make_storage_engine;
 
@@ -28,17 +29,19 @@ pub struct Baseer {
 impl Baseer {
     pub async fn run() -> Result<()> {
         info!("Starting Baseer (بصير): The Analyzer");
-
-        setup_tracing("baseer");
+        let shutdown_signal = ShutdownSignal::new();
 
         debug!("loading_configuration");
-        let config = load_config("Config.toml")?;
+        let config = load_config("Config.toml").await?;
+        if let Err(e) = setup_tracing(config.clone(), "baseer", shutdown_signal.clone()).await {
+            error!("failed_to_setup_tracing: {}", e);
+        }
 
         debug!("initializing_db_engine");
         let db_engine = Arc::new(make_storage_engine("baseer", &config).await?);
         debug!("db_engine::created");
 
-        let shutdown_signal = ShutdownSignal::new();
+
         let cancellation_token = CancellationToken::new();
 
         // Use RpcConfig directly and initialize runtime state

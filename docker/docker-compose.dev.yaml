@@ -22,7 +22,7 @@ include:
   - ./compose/twitter-monitor/twitter-monitor.dev.yaml
   - ./compose/muhafidh/raqib.yaml
   - ./compose/muhafidh/baseer.yaml
-
+  - ./compose/muhafidh/migrate.yaml
 
 services:
   bismillahdao-caddy:

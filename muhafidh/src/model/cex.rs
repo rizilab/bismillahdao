@@ -72,6 +72,9 @@ impl Cex {
             "7Ci23i82UMa8RpfVbdMjTytiDi2VoZS8uLyHhZBV2Qy7" => Some(CexName::PoloniexHW),
             "8s9j5qUtuE9PGA5s7QeAXEh5oc2UGr71pmJXgyiZMHkt" => Some(CexName::LBank),
             "G9X7F4JzLzbSGMCndiBdWNi5YzZZakmtkdwq7xS3Q3FE" => Some(CexName::StakecomHotWallet),
+            "2snHHreXbpJ7UwZxPe37gnUNf7Wx7wv6UKDSR2JckKuS" => Some(CexName::DeBridgeVault),
+            "Biw4eeaiYYYq6xSqEd7GzdwsrrndxA8mqdxfAtG3PTUU" => Some(CexName::RevolutHotWallet),
+            "HBxZShcE86UMmF93KUM8eWJKqeEXi5cqWCLYLMMhqMYm" => Some(CexName::BitStampHotWallet),
             _ => None,
         }
     }
@@ -183,6 +186,12 @@ pub enum CexName {
     LBank,
     #[serde(rename = "stakecom_hot_wallet")]
     StakecomHotWallet,
+    #[serde(rename = "debridge_vault")]
+    DeBridgeVault,
+    #[serde(rename = "revolut_hot_wallet")]
+    RevolutHotWallet,
+    #[serde(rename = "bitstamp_hot_wallet")]
+    BitStampHotWallet,
 }
 
 impl std::fmt::Display for CexName {
@@ -243,6 +252,9 @@ impl std::fmt::Display for CexName {
             CexName::PoloniexHW => write!(f, "poloniex_hw"),
             CexName::LBank => write!(f, "lbank"),
             CexName::StakecomHotWallet => write!(f, "stakecom_hot_wallet"),
+            CexName::DeBridgeVault => write!(f, "debridge_vault"),
+            CexName::RevolutHotWallet => write!(f, "revolut_hot_wallet"),
+            CexName::BitStampHotWallet => write!(f, "bitstamp_hot_wallet"),
         }
     }
 }
@@ -302,6 +314,9 @@ impl From<CexName> for String {
             CexName::PoloniexHW => "poloniex_hw".to_string(),
             CexName::LBank => "lbank".to_string(),
             CexName::StakecomHotWallet => "stakecom_hot_wallet".to_string(),
+            CexName::DeBridgeVault => "debridge_vault".to_string(),
+            CexName::RevolutHotWallet => "revolut_hot_wallet".to_string(),
+            CexName::BitStampHotWallet => "bitstamp_hot_wallet".to_string(),
         }
     }
 }
@@ -361,6 +376,9 @@ impl CexName {
             CexName::PoloniexHW => "poloniex_hw",
             CexName::LBank => "lbank",
             CexName::StakecomHotWallet => "stakecom_hot_wallet",
+            CexName::DeBridgeVault => "debridge_vault",
+            CexName::RevolutHotWallet => "revolut_hot_wallet",
+            CexName::BitStampHotWallet => "bitstamp_hot_wallet",
         }
     }
 }

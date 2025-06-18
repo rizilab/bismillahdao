@@ -1,0 +1,6 @@
+[cache.s3]
+bucket = "bismillahdao-sccache"
+endpoint = "s3.eu-central-003.backblazeb2.com"
+region = "auto"
+use_ssl = true
+no_credentials = false

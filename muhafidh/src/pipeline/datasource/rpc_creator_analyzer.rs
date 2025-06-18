@@ -125,7 +125,7 @@ impl Datasource for RpcTransactionAnalyzer {
         );
 
         let task_processor =
-            task_processor(transaction_receiver, sender, filters, cancellation_token.clone(), metrics.clone());
+            task_processor(transaction_receiver, sender, filters, cancellation_token.clone(), metrics.clone(), config.clone());
 
         tokio::select! {
         _ = signature_fetcher => {},
@@ -434,6 +434,7 @@ fn task_processor(
     filters: Filters,
     cancellation_token: CancellationToken,
     metrics: Arc<MetricsCollection>,
+    config: Arc<CreatorAnalyzerConfig>,
 ) -> JoinHandle<()> {
     let mut transaction_receiver = transaction_receiver;
     let sender = sender.clone();
@@ -530,9 +531,49 @@ fn task_processor(
                         error!("failed_to_record_process_time_metric::error::{}", e);
                     }
 
-                    if let Err(e) = sender.try_send(update) {
-                        error!("failed_to_send_update::signature::{}::error::{:?}", signature, e);
-                    continue;
+                    // Implement retry mechanism for channel send with backoff
+                    let mut attempt = 0;
+                    let max_send_retries = config.max_retries;
+                    
+                    loop {
+                        match sender.try_send(update.clone()) {
+                            Ok(()) => {
+                                if attempt > 0 {
+                                    debug!("successful_send_after_retry::signature::{}::attempts::{}", signature, attempt + 1);
+                                }
+                                break;
+                            },
+                            Err(mpsc::error::TrySendError::Full(_)) => {
+                                // Channel is full, try with backoff
+                                if attempt >= max_send_retries {
+                                    error!("max_send_retries_exceeded::signature::{}::dropping_update", signature);
+                                    break;
+                                }
+                                
+                                let backoff_delay = calculate_backoff_with_jitter(
+                                    attempt, 
+                                    100, // 100ms base delay
+                                    2000 // 2s max delay
+                                );
+                                
+                                warn!("channel_full_retrying::signature::{}::attempt::{}::delay_ms::{}", 
+                                      signature, attempt + 1, backoff_delay.as_millis());
+                                
+                                tokio::time::sleep(backoff_delay).await;
+                                attempt += 1;
+                            },
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                // Channel is closed, downstream processor has stopped
+                                error!("channel_closed::signature::{}::downstream_processor_stopped", signature);
+                                return; // Exit the entire task_processor
+                            },
+                        }
+                        
+                        // Check for cancellation during retry
+                        if cancellation_token.is_cancelled() {
+                            debug!("cancellation_detected_during_send_retry::signature::{}", signature);
+                            return;
+                        }
                     }
                 }
             }

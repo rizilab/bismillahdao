@@ -19,6 +19,9 @@ test-raqib:
   
 run-baseer:
   cargo run --release --bin baseer
+  
+run-migrate:
+  cargo run --release --bin migrate
 
 # Clean the build artifacts
 clean:

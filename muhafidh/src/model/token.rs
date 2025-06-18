@@ -4,6 +4,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenMetadata {
     pub mint: solana_pubkey::Pubkey,
+    pub bonding_curve: Option<solana_pubkey::Pubkey>,
     pub name: String,
     pub symbol: String,
     pub uri: String,
@@ -21,6 +22,7 @@ pub struct TokenMetadata {
 impl TokenMetadata {
     pub fn new(
         mint: solana_pubkey::Pubkey,
+        bonding_curve: Option<solana_pubkey::Pubkey>,
         name: String,
         symbol: String,
         uri: String,
@@ -33,6 +35,7 @@ impl TokenMetadata {
     ) -> Self {
         Self {
             mint,
+            bonding_curve,
             name,
             symbol,
             uri,
