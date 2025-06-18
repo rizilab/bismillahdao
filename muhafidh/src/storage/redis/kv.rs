@@ -9,7 +9,7 @@ use tracing::error;
 
 use crate::Result;
 use crate::err_with_loc;
-use crate::model::creator::graph::CreatorCexConnectionGraph;
+use crate::model::creator::graph::CreatorConnectionGraph;
 use crate::redis::RedisClientError;
 use crate::storage::redis::RedisPool;
 
@@ -80,7 +80,7 @@ impl TokenMetadataKv {
     pub async fn set_graph(
         &self,
         key: &str,
-        graph: &CreatorCexConnectionGraph,
+        graph: &CreatorConnectionGraph,
     ) -> Result<()> {
         let mut conn = self.get_connection().await?;
         let json = serde_json::to_string(graph).map_err(|e| {
@@ -105,7 +105,7 @@ impl TokenMetadataKv {
     pub async fn get_graph(
         &self,
         key: &str,
-    ) -> Result<Option<CreatorCexConnectionGraph>> {
+    ) -> Result<Option<CreatorConnectionGraph>> {
         let mut conn = self.get_connection().await?;
 
         let json: Option<String> = redis::cmd("GET").arg(key).query_async(&mut *conn).await.map_err(|e| {
@@ -115,7 +115,7 @@ impl TokenMetadataKv {
 
         match json {
             Some(json) => {
-                let graph: CreatorCexConnectionGraph = serde_json::from_str(&json).map_err(|e| {
+                let graph: CreatorConnectionGraph = serde_json::from_str(&json).map_err(|e| {
                     error!("deserialize_graph_failed: {}", e);
                     err_with_loc!(RedisClientError::DeserializeError(e))
                 })?;

@@ -5,14 +5,14 @@ use serde::Serialize;
 pub enum DiscordChannel {
     Debug,
     Error,
-    Info
+    Info,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscordChannelConfig {
     pub channel_name: DiscordChannel,
     pub channel_id: String,
-    pub key: String
+    pub key: String,
 }
 
 impl DiscordChannelConfig {
@@ -24,11 +24,14 @@ impl DiscordChannelConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscordConfig {
     pub fallback_timeout_ms: u64,
-    pub channels: Vec<DiscordChannelConfig>
+    pub channels: Vec<DiscordChannelConfig>,
 }
 
 impl DiscordConfig {
-    pub fn get_channel_by_name(&self, name: &DiscordChannel) -> Option<&DiscordChannelConfig> {
+    pub fn get_channel_by_name(
+        &self,
+        name: &DiscordChannel,
+    ) -> Option<&DiscordChannelConfig> {
         self.channels.iter().find(|c| c.channel_name == *name)
     }
 }

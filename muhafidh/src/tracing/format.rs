@@ -1,7 +1,7 @@
 use tracing::Event;
 use tracing_subscriber::fmt::FmtContext;
-use tracing_subscriber::fmt::FormatFields;
 use tracing_subscriber::fmt::FormatEvent;
+use tracing_subscriber::fmt::FormatFields;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::registry::LookupSpan;
 
@@ -42,15 +42,7 @@ where
         let jakarta_timestamp = utc_timestamp.with_timezone(&chrono_tz::Asia::Jakarta);
         let timestamp = jakarta_timestamp.format("%Y-%m-%d %H:%M:%S");
 
-        write!(
-            writer,
-            "{} {}::{}::{}::{}::",
-            metadata.level(),
-            timestamp,
-            self.engine_name,
-            file,
-            line
-        )?;
+        write!(writer, "{} {}::{}::{}::{}::", metadata.level(), timestamp, self.engine_name, file, line)?;
 
         // Format the actual message
         ctx.field_format().format_fields(writer.by_ref(), event)?;

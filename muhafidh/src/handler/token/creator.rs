@@ -11,14 +11,14 @@ use super::CreatorHandler;
 use crate::HandlerError;
 use crate::Result;
 use crate::config::CreatorAnalyzerConfig;
+use crate::config::RpcConfig;
 use crate::err_with_loc;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::model::cex::Cex;
-use crate::model::creator::graph::SharedCreatorCexConnectionGraph;
+use crate::model::creator::graph::SharedCreatorConnectionGraph;
 use crate::model::creator::metadata::CreatorMetadata;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::config::RpcConfig;
 use crate::storage::StorageEngine;
 
 pub struct CreatorHandlerMetadata {
@@ -46,7 +46,7 @@ impl CreatorHandlerMetadata {
     async fn process_cex_connection(
         &self,
         cex: Cex,
-        connection_graph: SharedCreatorCexConnectionGraph,
+        connection_graph: SharedCreatorConnectionGraph,
         mint: Pubkey,
         name: String,
         uri: String,
@@ -165,7 +165,7 @@ impl CreatorHandlerMetadata {
             db_engine.clone(),
             shutdown_signal.clone(),
             operator_receiver,
-            operator_sender,
+            operator_sender.clone(),
             rpc_config,
         ));
 
@@ -177,9 +177,12 @@ impl CreatorHandlerMetadata {
             creator_analyzer_config.clone(),
         );
         let rpc_config = self.rpc_config.clone();
+        let operator_sender = operator_sender.clone();
 
         tokio::spawn(async move {
-            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config).await {
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config, operator_sender)
+                .await
+            {
                 Ok(Some(mut pipeline)) => {
                     if let Err(e) = pipeline.run().await {
                         error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
@@ -215,7 +218,7 @@ impl CreatorHandlerMetadata {
             db_engine.clone(),
             shutdown_signal.clone(),
             operator_receiver,
-            operator_sender,
+            operator_sender.clone(),
             rpc_config,
         ));
 
@@ -227,9 +230,11 @@ impl CreatorHandlerMetadata {
             creator_analyzer_config.clone(),
         );
         let rpc_config = self.rpc_config.clone();
-
+        let operator_sender = operator_sender.clone();
         tokio::spawn(async move {
-            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config).await {
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config, operator_sender)
+                .await
+            {
                 Ok(Some(mut pipeline)) => {
                     if let Err(e) = pipeline.run().await {
                         error!("recovery_pipeline_run_failed::mint::{}::error::{}", creator_metadata.mint, e);
@@ -247,6 +252,53 @@ impl CreatorHandlerMetadata {
                 },
             }
         });
+        Ok(())
+    }
+
+    async fn process_max_depth_reached(
+        &self,
+        creator_metadata: Arc<CreatorMetadata>,
+    ) -> Result<()> {
+        let connection_graph = creator_metadata.wallet_connection.clone_graph().await;
+        let mint = creator_metadata.mint;
+        let updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Store the connection graph in pgrouting
+        if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
+            error!("store_connection_graph_pgrouting_failed::mint::{}::error::{}", mint, e);
+        } else {
+            debug!("store_connection_graph_pgrouting_success::mint::{}", mint);
+        }
+
+        // Store connection graph in Redis
+        let graph_key = format!("developer_connection_graph:{}", mint);
+        if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
+            error!("store_connection_graph_redis_failed::mint::{}::error::{}", mint, e);
+        } else {
+            debug!("store_connection_graph_redis_success::mint::{}", mint);
+        }
+
+        // Publish event
+        let event_data = serde_json::json!({
+            "mint": mint.to_string(),
+            "name": creator_metadata.token_name,
+            "uri": creator_metadata.token_uri,
+            "bonding_curve": creator_metadata.bonding_curve.unwrap_or_default().to_string(),
+            "updated_at": updated_at.to_string(),
+            "node_count": connection_graph.get_node_count(),
+            "edge_count": connection_graph.get_edge_count(),
+            "graph": connection_graph
+        });
+
+        if let Err(e) = self.db.redis.queue.publish("max_depth_reached", &event_data).await {
+            error!("publish_max_depth_reached_event_failed::mint::{}::error::{}", mint, e);
+        } else {
+            debug!("publish_max_depth_reached_event_success::mint::{}", mint);
+        }
+
         Ok(())
     }
 }
@@ -292,6 +344,15 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                                     failed_metadata.address, e);
                             }
                         }
+                    },
+                    CreatorHandler::MaxDepthReached { creator_metadata, child_token } => {
+                        if let Err(e) = creator_handler_metadata.process_max_depth_reached(creator_metadata.clone()).await {
+                            error!("failed_to_process_max_depth_reached::error::{}", e);
+                        }
+
+                        #[cfg(feature = "dev")]
+                        debug!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
+                        child_token.cancel();
                     },
                 }
             },
@@ -380,7 +441,7 @@ impl CreatorHandlerOperator {
                 error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
             }
 
-            let cex_url = format!("https://axiom.trade/meme/{}", creator_metadata.bonding_curve.unwrap_or("<missing>"));
+            let cex_url = format!("https://axiom.trade/meme/{}", creator_metadata.bonding_curve.unwrap_or_default());
             info!(
                 "cex_found::{}::name::{}::depth::{}::mint::{}::axiom::{}",
                 cex.name, creator_metadata.token_name, receiver_depth, creator_metadata.mint, cex_url

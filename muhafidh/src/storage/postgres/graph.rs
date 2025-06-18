@@ -7,7 +7,7 @@ use tracing::error;
 use crate::err_with_loc;
 use crate::error::Result;
 use crate::error::postgres::PostgresClientError;
-use crate::model::creator::graph::CreatorCexConnectionGraph;
+use crate::model::creator::graph::CreatorConnectionGraph;
 use crate::storage::postgres::PostgresPool;
 use crate::storage::postgres::PostgresStorage;
 
@@ -59,7 +59,7 @@ impl GraphDb {
     pub async fn store_connection_graph(
         &self,
         mint: &Pubkey,
-        connection_graph: &CreatorCexConnectionGraph,
+        connection_graph: &CreatorConnectionGraph,
     ) -> Result<()> {
         let mut conn = self.pool.get().await.map_err(|e| {
             error!("failed_to_get_client_pool_connection: {}", e);

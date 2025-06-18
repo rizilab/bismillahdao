@@ -2,33 +2,38 @@ pub mod filter;
 pub mod format;
 pub mod layer;
 
-use tracing_appender::rolling::RollingFileAppender;
-use tracing_appender::rolling::Rotation;
+use std::path::Path;
 
-use crate::config::Config;
-use crate::handler::shutdown::ShutdownSignal;
 use filter::DebugOnlyFilter;
-use filter::ErrorWarnFilter;
 use filter::ErrorOnlyFilter;
+use filter::ErrorWarnFilter;
 #[cfg(feature = "dev")]
 use filter::InfoOnlyFilter;
 use format::MuhafidhFormat;
-use std::path::Path;
+use layer::DiscordLayer;
+use tracing::error;
+use tracing_appender::rolling::RollingFileAppender;
+use tracing_appender::rolling::Rotation;
 use tracing_subscriber::Layer;
 use tracing_subscriber::prelude::*;
-use layer::DiscordLayer;
+
 use crate::Result;
+use crate::config::Config;
 use crate::err_with_loc;
 use crate::error::EngineError;
-use tracing::error;
+use crate::handler::shutdown::ShutdownSignal;
 
-pub async fn setup_tracing(config: Config, engine_name: &str, shutdown_signal: ShutdownSignal) -> Result<()> {
+pub async fn setup_tracing(
+    config: Config,
+    engine_name: &str,
+    shutdown_signal: ShutdownSignal,
+) -> Result<()> {
     // Attempt to load config, falling back to defaults if it fails
     let config_result = config;
 
     // Default logging config
     let logging_config = config_result.logging;
-    
+
     // Default discord config
     let discord_config = config_result.discord;
 
@@ -110,12 +115,8 @@ pub async fn setup_tracing(config: Config, engine_name: &str, shutdown_signal: S
         );
 
     #[cfg(feature = "discord_trace")]
-    let subscriber = subscriber.with(DiscordLayer::new(
-        discord_config, 
-        shutdown_signal,
-        engine_name.to_string()
-    ));
-    
+    let subscriber = subscriber.with(DiscordLayer::new(discord_config, shutdown_signal, engine_name.to_string()));
+
     #[cfg(feature = "dev")]
     let subscriber = subscriber
         // Terminal output with custom MuhafidhFormat - INFO and above

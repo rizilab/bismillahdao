@@ -1,15 +1,19 @@
 use std::sync::Arc;
-use tokio::sync::mpsc;
+
 use reqwest::Client;
 use serde_json::json;
+use tokio::sync::mpsc;
 use tracing::Level;
-use crate::{err_with_loc, Result};
 use tracing::error;
 
-use crate::config::{DiscordConfig, DiscordChannelConfig, DiscordChannel};
 use super::DiscordHandlerLevel;
-use crate::handler::shutdown::ShutdownSignal;
+use crate::Result;
+use crate::config::DiscordChannel;
+use crate::config::DiscordChannelConfig;
+use crate::config::DiscordConfig;
+use crate::err_with_loc;
 use crate::error::handler::HandlerError;
+use crate::handler::shutdown::ShutdownSignal;
 
 pub struct DiscordWebhookHandler {
     receiver: mpsc::Receiver<DiscordHandlerLevel>,
@@ -18,7 +22,10 @@ pub struct DiscordWebhookHandler {
 }
 
 impl DiscordWebhookHandler {
-    pub fn new(receiver: mpsc::Receiver<DiscordHandlerLevel>, discord_config: Arc<DiscordConfig>) -> Self {
+    pub fn new(
+        receiver: mpsc::Receiver<DiscordHandlerLevel>,
+        discord_config: Arc<DiscordConfig>,
+    ) -> Self {
         Self {
             receiver,
             discord_config,
@@ -26,7 +33,11 @@ impl DiscordWebhookHandler {
         }
     }
 
-    async fn send_to_discord(&self, channel_config: &DiscordChannelConfig, message: &str) -> Result<()> {
+    async fn send_to_discord(
+        &self,
+        channel_config: &DiscordChannelConfig,
+        message: &str,
+    ) -> Result<()> {
         if message.trim().is_empty() {
             return Err(err_with_loc!("Empty message")); // Don't send empty messages
         }
@@ -44,23 +55,29 @@ impl DiscordWebhookHandler {
                 "content": format!("{}", chunk) // Use ansi code block for better formatting
             });
 
-            let webhook_url = format!(
-                "https://discord.com/api/webhooks/{}/{}",
-                channel_config.channel_id,
-                channel_config.key
-            );
+            let webhook_url =
+                format!("https://discord.com/api/webhooks/{}/{}", channel_config.channel_id, channel_config.key);
 
             match self.http_client.post(&webhook_url).json(&payload).send().await {
                 Ok(response) => {
                     if !response.status().is_success() {
                         let status = response.status();
-                        let text = response.text().await.unwrap_or_else(|_| "<failed to read response text>".to_string());
-                        return Err(err_with_loc!(HandlerError::SendDiscordError(format!("Failed to send log to Discord channel {:?}: {} - {}", channel_config.channel_name, status, text))));
+                        let text = response
+                            .text()
+                            .await
+                            .unwrap_or_else(|_| "<failed to read response text>".to_string());
+                        return Err(err_with_loc!(HandlerError::SendDiscordError(format!(
+                            "Failed to send log to Discord channel {:?}: {} - {}",
+                            channel_config.channel_name, status, text
+                        ))));
                     }
-                }
+                },
                 Err(e) => {
-                    return Err(err_with_loc!(HandlerError::SendDiscordError(format!("Error sending log to Discord channel {:?}: {}", channel_config.channel_name, e))));
-                }
+                    return Err(err_with_loc!(HandlerError::SendDiscordError(format!(
+                        "Error sending log to Discord channel {:?}: {}",
+                        channel_config.channel_name, e
+                    ))));
+                },
             }
         }
 
@@ -114,34 +131,47 @@ pub struct DiscordWebhookHandlerOperator {
 }
 
 impl DiscordWebhookHandlerOperator {
-    pub fn new(shutdown: ShutdownSignal, receiver: mpsc::Receiver<DiscordHandlerLevel>, sender: mpsc::Sender<DiscordHandlerLevel>, discord_config: Arc<DiscordConfig>) -> Self {
+    pub fn new(
+        shutdown: ShutdownSignal,
+        receiver: mpsc::Receiver<DiscordHandlerLevel>,
+        sender: mpsc::Sender<DiscordHandlerLevel>,
+        discord_config: Arc<DiscordConfig>,
+    ) -> Self {
         let discord_webhook = DiscordWebhookHandler::new(receiver, discord_config.clone());
-        
+
         tokio::spawn(run_discord_webhook_handler(discord_webhook));
 
-        Self { shutdown, sender, discord_config }
+        Self {
+            shutdown,
+            sender,
+            discord_config,
+        }
     }
-    
-    pub fn send_message(&self, target: &str, level: &Level, message: String) -> Result<()> {
+
+    pub fn send_message(
+        &self,
+        target: &str,
+        level: &Level,
+        message: String,
+    ) -> Result<()> {
         match level {
             &Level::INFO => {
                 if target.starts_with("muhafidh::handler::token::creator") {
-                    if let Err(e) = self.sender.try_send(DiscordHandlerLevel::Info { message }) {
-                    error!("Failed to send log to Discord: {}", e);
+                    if let Err(e) = self.sender.try_send(DiscordHandlerLevel::Info {
+                        message,
+                    }) {
+                        error!("Failed to send log to Discord: {}", e);
                     }
                 }
                 Ok(())
-            }
+            },
             // &Level::ERROR => {
             //     if let Err(e) = self.sender.try_send(DiscordHandlerLevel::Error { message }) {
             //         error!("Failed to send log to Discord: {}", e);
             //     }
             //     Ok(())
             // }
-            _ => {
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
-    
 }

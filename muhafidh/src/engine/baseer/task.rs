@@ -87,12 +87,14 @@ impl Baseer {
     pub fn spawn_new_token_creator_analyzer(
         &self,
         mut receiver: mpsc::Receiver<NewTokenCache>,
+        sender: mpsc::Sender<CreatorHandler>,
         cancellation_token: CancellationToken,
     ) -> JoinHandle<Result<()>> {
         let baseer = self.clone();
         let rpc_config = self.rpc_config.clone();
         let creator_analyzer_config = self.config.creator_analyzer.clone();
         let creator_analyzer_config = Arc::new(creator_analyzer_config);
+        let sender = sender.clone();
 
         tokio::spawn(async move {
             let max_depth = baseer.config.creator_analyzer.max_depth;
@@ -106,6 +108,7 @@ impl Baseer {
                         let child_token = cancellation_token.child_token();
                         let rpc_config_clone = rpc_config.clone();
                         let creator_metadata = CreatorMetadata::from_token(token.clone(), max_depth).await;
+                        let sender = sender.clone();
 
                         tokio::spawn(async move {
                             let creator_metadata = Arc::new(creator_metadata);
@@ -115,7 +118,8 @@ impl Baseer {
                                 processor.clone(),
                                 child_token,
                                 max_depth,
-                                rpc_config_clone
+                                rpc_config_clone,
+                                sender
                             ).await {
                                 Ok(Some(mut pipeline)) => {
                                     if let Err(e) = pipeline.run().await {
