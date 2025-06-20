@@ -11,10 +11,10 @@ use crate::error::EngineError;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::handler::token::metadata::TokenHandlerMetadataOperator;
 use crate::pipeline::subscriber::pumpfun::make_pumpfun_subscriber_pipeline;
-use crate::tracing::setup_tracing;
 use crate::storage::StorageEngine;
 use crate::storage::make_storage_engine;
 use crate::storage::postgres::PostgresStorage;
+use crate::tracing::setup_tracing;
 
 #[derive(Clone)]
 pub struct Raqib {
@@ -26,7 +26,7 @@ pub struct Raqib {
 impl Raqib {
     pub async fn run() -> Result<()> {
         info!("Starting Raqib (رقيب): The Watchful Guardian");
-        
+
         let shutdown_signal = ShutdownSignal::new();
 
         let config = load_config("Config.toml").await?;

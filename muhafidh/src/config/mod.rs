@@ -1,25 +1,24 @@
 pub mod creator;
+pub mod discord;
 pub mod log;
 pub mod rpc;
 pub mod storage;
-pub mod discord;
 
 use std::path::Path;
 
-use serde::Deserialize;
-use serde::Serialize;
-use toml;
-
 pub use creator::CreatorAnalyzerConfig;
+pub use discord::DiscordChannel;
+pub use discord::DiscordChannelConfig;
+pub use discord::DiscordConfig;
 pub use log::LoggingConfig;
 pub use rpc::RpcConfig;
 pub use rpc::RpcProviderConfig;
 pub use rpc::RpcProviderRole;
+use serde::Deserialize;
+use serde::Serialize;
 pub use storage::StoragePostgresConfig;
 pub use storage::StorageRedisConfig;
-pub use discord::DiscordConfig;
-pub use discord::DiscordChannel;
-pub use discord::DiscordChannelConfig;
+use toml;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

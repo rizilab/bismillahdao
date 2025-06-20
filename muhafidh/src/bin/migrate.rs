@@ -7,11 +7,11 @@
 //  In the name of Allah, the Most Gracious, the Most Merciful.
 // ─────────────────────────────────────────────────────────────────────────────
 
-use muhafidh::handler::shutdown::ShutdownSignal;
 use muhafidh::config::load_config;
 use muhafidh::error::Result;
-use muhafidh::tracing::setup_tracing;
+use muhafidh::handler::shutdown::ShutdownSignal;
 use muhafidh::storage::run_database_migrations;
+use muhafidh::tracing::setup_tracing;
 use tracing::error;
 use tracing::info;
 

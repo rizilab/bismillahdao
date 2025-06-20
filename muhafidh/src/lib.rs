@@ -7,8 +7,8 @@ pub mod metric;
 pub mod model;
 pub mod pipeline;
 pub mod storage;
-pub mod utils;
 pub mod tracing;
+pub mod utils;
 
 pub use engine::*;
 pub use error::*;

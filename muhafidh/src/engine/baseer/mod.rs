@@ -4,19 +4,19 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
 use tracing::debug;
+use tracing::error;
 use tracing::info;
 
 use crate::Result;
 use crate::config::Config;
+use crate::config::RpcConfig;
 use crate::config::load_config;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::handler::token::creator::CreatorHandlerOperator;
-use crate::config::RpcConfig;
-use crate::tracing::setup_tracing;
 use crate::storage::StorageEngine;
 use crate::storage::make_storage_engine;
+use crate::tracing::setup_tracing;
 
 #[derive(Clone)]
 pub struct Baseer {
@@ -41,7 +41,6 @@ impl Baseer {
         let db_engine = Arc::new(make_storage_engine("baseer", &config).await?);
         debug!("db_engine::created");
 
-
         let cancellation_token = CancellationToken::new();
 
         // Use RpcConfig directly and initialize runtime state
@@ -53,7 +52,7 @@ impl Baseer {
             db_engine.clone(),
             shutdown_signal.clone(),
             operator_receiver,
-            operator_sender,
+            operator_sender.clone(),
             rpc_config.clone(),
         ));
 
@@ -68,7 +67,7 @@ impl Baseer {
         let (sender, receiver) = mpsc::channel(1000);
 
         let token_creator_analyzer_handle =
-            baseer.spawn_new_token_creator_analyzer(receiver, cancellation_token.clone());
+            baseer.spawn_new_token_creator_analyzer(receiver, operator_sender.clone(), cancellation_token.clone());
 
         let token_subscriber_handle = baseer.spawn_new_token_subscriber(shutdown_signal.clone(), sender);
 

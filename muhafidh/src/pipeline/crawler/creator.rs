@@ -5,21 +5,25 @@ use carbon_core::pipeline::ShutdownStrategy;
 use carbon_log_metrics::LogMetrics;
 use carbon_system_program_decoder::SystemProgramDecoder;
 use solana_sdk::commitment_config::CommitmentConfig;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
+use tracing::error;
 use tracing::warn;
 
 use crate::Result;
+use crate::config::RpcConfig;
+use crate::handler::token::CreatorHandler;
 use crate::pipeline::datasource::rpc_creator_analyzer::Filters;
 use crate::pipeline::datasource::rpc_creator_analyzer::RpcTransactionAnalyzer;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
-use crate::config::RpcConfig;
 
 pub async fn make_creator_crawler_pipeline(
     mut processor: CreatorInstructionProcessor,
     child_token: CancellationToken,
     max_depth: usize,
     rpc_config: Arc<RpcConfig>,
+    sender: mpsc::Sender<CreatorHandler>,
 ) -> Result<Option<Pipeline>> {
     let filters = Filters::new(None, None, None);
     let creator_metadata = processor.get_creator();
@@ -33,9 +37,12 @@ pub async fn make_creator_crawler_pipeline(
     let creator_analyzer_config = processor.get_creator_analyzer_config();
 
     if depth > max_depth {
-        child_token.cancel();
-        #[cfg(feature = "dev")]
-        debug!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
+        if let Err(e) = sender.try_send(CreatorHandler::MaxDepthReached {
+            creator_metadata: creator_metadata.clone(),
+            child_token: child_token.clone(),
+        }) {
+            error!("failed_to_send_max_depth_reached_message::mint::{}::error::{}", creator_metadata.mint, e);
+        }
         return Ok(None);
     }
 

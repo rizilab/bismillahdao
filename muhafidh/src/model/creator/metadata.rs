@@ -8,7 +8,7 @@ use serde::Serialize;
 use solana_pubkey::Pubkey;
 use tokio::sync::RwLock;
 
-use super::graph::SharedCreatorCexConnectionGraph;
+use super::graph::SharedCreatorConnectionGraph;
 use crate::storage::redis::model::NewTokenCache;
 
 // Define account status for different processing stages
@@ -69,7 +69,7 @@ pub struct CreatorMetadata {
     pub total_received: f64,
     pub cex_sources: Vec<Pubkey>,
     pub cex_updated_at: u64,
-    pub wallet_connection: SharedCreatorCexConnectionGraph,
+    pub wallet_connection: SharedCreatorConnectionGraph,
 
     // BFS state - using SharedBfsState for async mutability
     #[serde(skip)]
@@ -87,7 +87,7 @@ impl CreatorMetadata {
         let cex_sources = Vec::new();
         let cex_updated_at = 0;
         let total_received = 0.0;
-        let wallet_connection = SharedCreatorCexConnectionGraph::new();
+        let wallet_connection = SharedCreatorConnectionGraph::new();
         wallet_connection.add_node(address, false).await;
 
         let bfs_state = SharedBfsState::new(address);
@@ -221,7 +221,7 @@ impl From<NewTokenCache> for CreatorMetadata {
             total_received: 0.0,
             cex_sources: Vec::new(),
             cex_updated_at: 0,
-            wallet_connection: SharedCreatorCexConnectionGraph::new(),
+            wallet_connection: SharedCreatorConnectionGraph::new(),
             bfs_state,
             max_depth: 0, // This should be set later
         }

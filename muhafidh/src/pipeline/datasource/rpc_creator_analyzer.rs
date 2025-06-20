@@ -124,8 +124,14 @@ impl Datasource for RpcTransactionAnalyzer {
             config.clone(),
         );
 
-        let task_processor =
-            task_processor(transaction_receiver, sender, filters, cancellation_token.clone(), metrics.clone(), config.clone());
+        let task_processor = task_processor(
+            transaction_receiver,
+            sender,
+            filters,
+            cancellation_token.clone(),
+            metrics.clone(),
+            config.clone(),
+        );
 
         tokio::select! {
         _ = signature_fetcher => {},
@@ -534,7 +540,7 @@ fn task_processor(
                     // Implement retry mechanism for channel send with backoff
                     let mut attempt = 0;
                     let max_send_retries = config.max_retries;
-                    
+
                     loop {
                         match sender.try_send(update.clone()) {
                             Ok(()) => {
@@ -549,16 +555,16 @@ fn task_processor(
                                     error!("max_send_retries_exceeded::signature::{}::dropping_update", signature);
                                     break;
                                 }
-                                
+
                                 let backoff_delay = calculate_backoff_with_jitter(
-                                    attempt, 
+                                    attempt,
                                     100, // 100ms base delay
                                     2000 // 2s max delay
                                 );
-                                
-                                warn!("channel_full_retrying::signature::{}::attempt::{}::delay_ms::{}", 
+
+                                warn!("channel_full_retrying::signature::{}::attempt::{}::delay_ms::{}",
                                       signature, attempt + 1, backoff_delay.as_millis());
-                                
+
                                 tokio::time::sleep(backoff_delay).await;
                                 attempt += 1;
                             },
@@ -568,7 +574,7 @@ fn task_processor(
                                 return; // Exit the entire task_processor
                             },
                         }
-                        
+
                         // Check for cancellation during retry
                         if cancellation_token.is_cancelled() {
                             debug!("cancellation_detected_during_send_retry::signature::{}", signature);

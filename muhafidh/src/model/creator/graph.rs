@@ -27,13 +27,13 @@ pub struct TransactionEdge {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CreatorCexConnectionGraph {
+pub struct CreatorConnectionGraph {
     graph: Graph<AddressNode, TransactionEdge>,
     #[serde(skip)]
     node_indices: HashMap<Pubkey, NodeIndex>,
 }
 
-impl CreatorCexConnectionGraph {
+impl CreatorConnectionGraph {
     pub fn new() -> Self {
         Self {
             graph: Graph::new(),
@@ -104,15 +104,15 @@ impl CreatorCexConnectionGraph {
 
 // Thread-safe wrapper for the graph
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SharedCreatorCexConnectionGraph {
+pub struct SharedCreatorConnectionGraph {
     #[serde(skip)]
-    inner: Arc<RwLock<CreatorCexConnectionGraph>>,
+    inner: Arc<RwLock<CreatorConnectionGraph>>,
 }
 
-impl SharedCreatorCexConnectionGraph {
+impl SharedCreatorConnectionGraph {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(CreatorCexConnectionGraph::new())),
+            inner: Arc::new(RwLock::new(CreatorConnectionGraph::new())),
         }
     }
 
@@ -142,13 +142,13 @@ impl SharedCreatorCexConnectionGraph {
         self.inner.read().await.get_edge_count()
     }
 
-    pub async fn clone_graph(&self) -> CreatorCexConnectionGraph {
+    pub async fn clone_graph(&self) -> CreatorConnectionGraph {
         self.inner.read().await.clone()
     }
 }
 
-impl From<CreatorCexConnectionGraph> for SharedCreatorCexConnectionGraph {
-    fn from(graph: CreatorCexConnectionGraph) -> Self {
+impl From<CreatorConnectionGraph> for SharedCreatorConnectionGraph {
+    fn from(graph: CreatorConnectionGraph) -> Self {
         Self {
             inner: Arc::new(RwLock::new(graph)),
         }
