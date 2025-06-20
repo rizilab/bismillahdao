@@ -16,6 +16,7 @@ use crate::err_with_loc;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::model::cex::Cex;
 use crate::model::creator::graph::SharedCreatorConnectionGraph;
+use crate::model::dev::Dev;
 use crate::model::creator::metadata::CreatorMetadata;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
@@ -50,8 +51,10 @@ impl CreatorHandlerMetadata {
         mint: Pubkey,
         name: String,
         uri: String,
+        dev: Pubkey,
     ) -> Result<()> {
         // Update the token record with CEX source
+        let dev_name = Dev::get_dev_name(dev).unwrap_or_default();
         let cex_sources = vec![cex.address];
         let cex_updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -131,6 +134,7 @@ impl CreatorHandlerMetadata {
           "mint": mint.to_string(),
           "name": name,
           "uri": uri,
+          "dev_name": dev_name,
           "cex_name": cex.name.to_string(),
           "cex_address": cex.address.to_string(),
           "cex_updated_at": cex_updated_at,
@@ -323,9 +327,9 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             }
                         }
                     },
-                    CreatorHandler::CexConnection { cex, cex_connection, mint, name, uri } => {
+                    CreatorHandler::CexConnection { cex, cex_connection, mint, name, uri, dev } => {
                         if let Err(e) = creator_handler_metadata.process_cex_connection(
-                            cex.clone(), cex_connection, mint, name, uri
+                            cex.clone(), cex_connection, mint, name, uri, dev
                         ).await {
                             error!("cex_failed::{}::mint::{}::error::{}", cex.clone().name, mint, e);
                         }
@@ -412,8 +416,11 @@ impl CreatorHandlerOperator {
             0
         };
 
-        if let Some(cex_name) = Cex::get_exchange_name(sender) {
-            let cex = Cex::new(cex_name, sender);
+        // First check if this is a known developer address with associated CEX
+        if let Some(dev) = Dev::get_dev_info(creator_metadata.original_creator.clone()) {
+            let cex_name = dev.cex_name;
+            let cex_address = Cex::get_exchange_address(cex_name.clone()).unwrap_or_default();
+            let cex = Cex::new(cex_name, cex_address);
             wallet_connection.add_node(sender, true).await;
             wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
 
@@ -423,6 +430,7 @@ impl CreatorHandlerOperator {
                 mint: creator_metadata.mint,
                 name: creator_metadata.token_name.clone(),
                 uri: creator_metadata.token_uri.clone(),
+                dev: sender,
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
@@ -440,12 +448,41 @@ impl CreatorHandlerOperator {
             if let Err(e) = self.db.redis.kv.set(&address_key, &address_data).await {
                 error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
             }
+            child_token.cancel();
+            return Ok(());
+        }
 
-            let cex_url = format!("https://axiom.trade/meme/{}", creator_metadata.bonding_curve.unwrap_or_default());
-            info!(
-                "cex_found::{}::name::{}::depth::{}::mint::{}::axiom::{}",
-                cex.name, creator_metadata.token_name, receiver_depth, creator_metadata.mint, cex_url
-            );
+        // Then check direct CEX address detection
+        if let Some(cex_name) = Cex::get_exchange_name(sender) {
+            let cex = Cex::new(cex_name, sender);
+            wallet_connection.add_node(sender, true).await;
+            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
+
+            if let Err(e) = self.sender.try_send(CreatorHandler::CexConnection {
+                cex: cex.clone(),
+                cex_connection: wallet_connection,
+                mint: creator_metadata.mint,
+                name: creator_metadata.token_name.clone(),
+                uri: creator_metadata.token_uri.clone(),
+                dev: sender,
+            }) {
+                error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
+                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                    "Failed to send cex connection request ({}): {}",
+                    cex.name, e
+                ))));
+            }
+
+            // cache receiver connection with cex
+            let address_key = format!("address:{}", receiver);
+            let address_data = serde_json::json!({
+                "name": cex.name.to_string(),
+                "address": cex.address.to_string(),
+            });
+            if let Err(e) = self.db.redis.kv.set(&address_key, &address_data).await {
+                error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
+            }
+            
             child_token.cancel();
             return Ok(());
         }
@@ -460,6 +497,7 @@ impl CreatorHandlerOperator {
                 mint: creator_metadata.mint,
                 name: creator_metadata.token_name.clone(),
                 uri: creator_metadata.token_uri.clone(),
+                dev: sender,
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(

@@ -34,6 +34,7 @@ pub enum CreatorHandler {
         mint: Pubkey,
         name: String,
         uri: String,
+        dev: Pubkey,
     },
     ProcessRecoveredAccount {
         creator_metadata: Arc<CreatorMetadata>,
