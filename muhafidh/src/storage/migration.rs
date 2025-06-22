@@ -11,7 +11,7 @@ use crate::error::postgres::PostgresClientError;
 use crate::storage::postgres::PostgresPool;
 
 /// Current schema version - increment this when adding new migrations
-pub const CURRENT_SCHEMA_VERSION: i64 = 17;
+pub const CURRENT_SCHEMA_VERSION: i64 = 18;
 
 /// A migration that can be applied to the database
 pub struct Migration {
@@ -191,6 +191,7 @@ impl Migrator {
                     created_at BIGINT NOT NULL,
                     cex_sources TEXT[] DEFAULT NULL,
                     cex_updated_at BIGINT DEFAULT NULL,
+                    updated_at BIGINT DEFAULT NULL,
                     associated_bonding_curve TEXT DEFAULT NULL,
                     is_bonded BOOLEAN NOT NULL DEFAULT FALSE,
                     bonded_at BIGINT DEFAULT NULL,
@@ -410,6 +411,21 @@ impl Migrator {
                     "CREATE INDEX IF NOT EXISTS idx_wallet_edges_source_target ON wallet_edges(source_id, target_id)",
                     "CREATE INDEX IF NOT EXISTS idx_wallet_edges_pubkeys ON wallet_edges(source_pubkey, target_pubkey)",
                     "CREATE INDEX IF NOT EXISTS idx_wallet_edges_mint ON wallet_edges(mint)",
+                ],
+            },
+            // Migration 18: Add missing columns to tokens table
+            Migration {
+                version: 18,
+                name: String::from("add_missing_tokens_columns"),
+                sql: vec![
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS updated_at BIGINT DEFAULT NULL",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS cex_sources TEXT[] DEFAULT NULL",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS cex_updated_at BIGINT DEFAULT NULL",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS associated_bonding_curve TEXT DEFAULT NULL",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS is_bonded BOOLEAN NOT NULL DEFAULT FALSE",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS bonded_at BIGINT DEFAULT NULL",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS all_time_high_price BIGINT NOT NULL DEFAULT 0",
+                    "ALTER TABLE tokens ADD COLUMN IF NOT EXISTS all_time_high_price_at BIGINT NOT NULL DEFAULT 0",
                 ],
             },
         ]

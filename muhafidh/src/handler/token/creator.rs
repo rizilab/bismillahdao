@@ -54,9 +54,9 @@ impl CreatorHandlerMetadata {
         dev: Pubkey,
     ) -> Result<()> {
         // Update the token record with CEX source
-        let dev_name = Dev::get_dev_name(dev).unwrap_or_default();
+        let dev_name = Dev::get_dev_name(dev.clone()).unwrap_or_default();
         let cex_sources = vec![cex.address];
-        let cex_updated_at = std::time::SystemTime::now()
+        let updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
@@ -66,7 +66,7 @@ impl CreatorHandlerMetadata {
         self.db
             .postgres
             .db
-            .update_token_cex_sources(&mint, &cex_sources, cex_updated_at)
+            .update_token_cex_sources(&mint, &cex_sources, updated_at)
             .await?;
 
         // Record CEX activity for analytics
@@ -97,7 +97,7 @@ impl CreatorHandlerMetadata {
             self.db.redis.kv.get::<crate::model::token::TokenMetadata>(&token_key).await
         {
             token_metadata.cex_sources = Some(cex_sources.clone());
-            token_metadata.cex_updated_at = Some(cex_updated_at);
+            token_metadata.cex_updated_at = Some(updated_at);
 
             if let Err(e) = self.db.redis.kv.set(&token_key, &token_metadata).await {
                 error!("update_token_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
@@ -120,7 +120,7 @@ impl CreatorHandlerMetadata {
           "name": cex.name.to_string(),
           "address": cex.address.to_string(),
           "latest_mint": mint.to_string(),
-          "updated_at": cex_updated_at
+          "updated_at": updated_at
         });
 
         if let Err(e) = self.db.redis.kv.set(&cex_key, &cex_data).await {
@@ -135,9 +135,10 @@ impl CreatorHandlerMetadata {
           "name": name,
           "uri": uri,
           "dev_name": dev_name,
+          "creator": dev.to_string(),
           "cex_name": cex.name.to_string(),
           "cex_address": cex.address.to_string(),
-          "cex_updated_at": cex_updated_at,
+          "updated_at": updated_at,
           "node_count": connection_graph.get_node_count(),
           "edge_count": connection_graph.get_edge_count(),
           "graph": connection_graph
@@ -284,19 +285,23 @@ impl CreatorHandlerMetadata {
         } else {
             debug!("store_connection_graph_redis_success::mint::{}", mint);
         }
-
+        let dev_name = Dev::get_dev_name(creator_metadata.original_creator.clone()).unwrap_or_default();
         // Publish event
         let event_data = serde_json::json!({
             "mint": mint.to_string(),
             "name": creator_metadata.token_name,
             "uri": creator_metadata.token_uri,
+            "dev_name": dev_name,
+            "creator": creator_metadata.original_creator.to_string(),
+            "cex_name": "unknown",
+            "cex_address": "unknown",
             "bonding_curve": creator_metadata.bonding_curve.unwrap_or_default().to_string(),
             "updated_at": updated_at.to_string(),
             "node_count": connection_graph.get_node_count(),
             "edge_count": connection_graph.get_edge_count(),
             "graph": connection_graph
         });
-
+  
         if let Err(e) = self.db.redis.queue.publish("max_depth_reached", &event_data).await {
             error!("publish_max_depth_reached_event_failed::mint::{}::error::{}", mint, e);
         } else {

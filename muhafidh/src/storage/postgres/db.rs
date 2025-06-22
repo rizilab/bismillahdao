@@ -36,13 +36,16 @@ impl TokenMetadataDb {
         let conn = self.pool.get().await?;
         conn.execute(
             "INSERT INTO tokens (
-                mint, name, symbol, uri, creator, created_at,
-                associated_bonding_curve, is_bonded, all_time_high_price, all_time_high_price_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                mint, name, symbol, uri, creator, created_at, cex_sources, cex_updated_at, updated_at,
+                associated_bonding_curve, is_bonded, bonded_at, all_time_high_price, all_time_high_price_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             ON CONFLICT (mint) DO UPDATE SET
                 name = EXCLUDED.name,
                 symbol = EXCLUDED.symbol,
                 uri = EXCLUDED.uri,
+                cex_sources = EXCLUDED.cex_sources,
+                cex_updated_at = EXCLUDED.cex_updated_at,
+                updated_at = EXCLUDED.updated_at,
                 associated_bonding_curve = EXCLUDED.associated_bonding_curve,
                 all_time_high_price = CASE
                     WHEN tokens.all_time_high_price < EXCLUDED.all_time_high_price
@@ -61,8 +64,12 @@ impl TokenMetadataDb {
                 &dto.uri,
                 &dto.creator.to_string(),
                 &(dto.created_at as i64),
+                &dto.cex_sources.as_ref().map(|sources| sources.iter().map(|p| p.to_string()).collect::<Vec<String>>()),
+                &(dto.cex_updated_at.unwrap_or(0) as i64),
+                &(dto.updated_at.unwrap_or(0) as i64),
                 &dto.associated_bonding_curve.map(|p| p.to_string()),
                 &dto.is_bonded,
+                &(dto.bonded_at.unwrap_or(0) as i64),
                 &(dto.all_time_high_price as i64),
                 &(dto.all_time_high_price_at as i64),
             ],
