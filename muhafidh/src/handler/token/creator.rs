@@ -53,6 +53,7 @@ impl CreatorHandlerMetadata {
         uri: String,
         dev: Pubkey,
         created_at: u64,
+        bonding_curve: Pubkey,
     ) -> Result<()> {
         // Update the token record with CEX source
         let dev_name = Dev::get_dev_name(dev.clone()).unwrap_or_default();
@@ -139,6 +140,7 @@ impl CreatorHandlerMetadata {
           "creator": dev.to_string(),
           "cex_name": cex.name.to_string(),
           "cex_address": cex.address.to_string(),
+          "bonding_curve": bonding_curve.to_string(),
           "created_at": created_at,
           "updated_at": updated_at,
           "node_count": connection_graph.get_node_count(),
@@ -335,9 +337,9 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             }
                         }
                     },
-                    CreatorHandler::CexConnection { cex, cex_connection, mint, name, uri, dev, created_at } => {
+                    CreatorHandler::CexConnection { cex, cex_connection, mint, name, uri, dev, created_at, bonding_curve } => {
                         if let Err(e) = creator_handler_metadata.process_cex_connection(
-                            cex.clone(), cex_connection, mint, name, uri, dev, created_at
+                            cex.clone(), cex_connection, mint, name, uri, dev, created_at, bonding_curve
                         ).await {
                             error!("cex_failed::{}::mint::{}::error::{}", cex.clone().name, mint, e);
                         }
@@ -440,6 +442,7 @@ impl CreatorHandlerOperator {
                 uri: creator_metadata.token_uri.clone(),
                 dev: sender,
                 created_at: creator_metadata.created_at,
+                bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
@@ -475,6 +478,7 @@ impl CreatorHandlerOperator {
                 uri: creator_metadata.token_uri.clone(),
                 dev: sender,
                 created_at: creator_metadata.created_at,
+                bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
@@ -509,6 +513,7 @@ impl CreatorHandlerOperator {
                 uri: creator_metadata.token_uri.clone(),
                 dev: sender,
                 created_at: creator_metadata.created_at,
+                bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
             }) {
                 error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
                 return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(

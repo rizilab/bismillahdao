@@ -36,6 +36,7 @@ pub enum CreatorHandler {
         uri: String,
         dev: Pubkey,
         created_at: u64,
+        bonding_curve: Pubkey,
     },
     ProcessRecoveredAccount {
         creator_metadata: Arc<CreatorMetadata>,
