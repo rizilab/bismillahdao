@@ -50,8 +50,8 @@ RUN chown -R postgres:postgres /etc/postgresql/certs && \
     chmod 400 /etc/postgresql/certs/server.key && \
     chmod 600 /etc/postgresql/certs/server.crt /etc/postgresql/certs/ca.crt
 
-# Copy the SQL script to the initialization directory
-COPY docker/volumes/timescaledb/create_db.sql /docker-entrypoint-initdb.d/
+# Note: create_db.sql is mounted by docker-compose, not copied here
+# to avoid conflicts and ensure latest version is used
 
 # Set the script as the entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

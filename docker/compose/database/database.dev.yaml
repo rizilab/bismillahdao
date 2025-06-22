@@ -27,14 +27,15 @@ services:
     restart: on-failure
     volumes:
       - ./../../volumes/timescaledb/data:/var/lib/postgresql/data
-      - ./../../volumes/timescaledb/migrations/001_extensions.sql:/docker-entrypoint-initdb.d/001_extensions.sql:ro
-      - ./../../volumes/timescaledb/migrations/twitter_monitor_migrations.sql:/docker-entrypoint-initdb.d/002_twitter_monitor.sql:ro
+      - ./../../volumes/timescaledb/pg_hba.custom.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./../../volumes/timescaledb/create_db.sql:/docker-entrypoint-initdb.d/001_create_db.sql:ro
+      - ./../../volumes/timescaledb/migrations/001_extensions.sql:/docker-entrypoint-initdb.d/002_extensions.sql:ro
+      - ./../../volumes/timescaledb/migrations/twitter_monitor_migrations.sql:/docker-entrypoint-initdb.d/003_twitter_monitor.sql:ro
     env_file: *env_files
     environment:
       - POSTGRES_DB=r4gmi
       - POSTGRES_USER=r4gmi
       - PGUSER=r4gmi
-      - PGDATABASE=r4gmi
       - POSTGRES_PASSWORD=r4gmi
       - POSTGRES_SHARED_BUFFERS=1536MB
       - POSTGRES_EFFECTIVE_CACHE_SIZE=3072MB
@@ -48,6 +49,12 @@ services:
       - POSTGRES_MAX_LOCKS_PER_TRANSACTION=128
     ports:
       - "0.0.0.0:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U r4gmi -d r4gmi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - bismillahdao_net
   
