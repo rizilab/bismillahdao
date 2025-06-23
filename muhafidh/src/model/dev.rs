@@ -26,7 +26,8 @@ impl Dev {
     pub fn get_cex_from_dev_address(address: solana_pubkey::Pubkey) -> Option<CexName> {
         match address.to_string().as_str() {
             "GZVSEAajExLJEvACHHQcujBw7nJq98GWUEZtood9LM9b" => Some(CexName::BybitHW),
-            "xXpRSpAe1ajq4tJP78tS3X1AqNwJVQ4Vvb1Swg4hHQh" => Some(CexName::Coinbase2),    
+            "xXpRSpAe1ajq4tJP78tS3X1AqNwJVQ4Vvb1Swg4hHQh" => Some(CexName::Coinbase2),
+            "8uWXcvQ3uCQ3WYwNy7M6pzMsQ85ZkYRkGDkEaisx5TNG" => Some(CexName::CoinbasePrime),
             _ => None,
         }
     }
@@ -34,16 +35,15 @@ impl Dev {
     /// Get complete developer info (including associated CEX) from address
     pub fn get_dev_info(address: solana_pubkey::Pubkey) -> Option<Dev> {
         match address.to_string().as_str() {
-            "GZVSEAajExLJEvACHHQcujBw7nJq98GWUEZtood9LM9b" => Some(Dev::new(
-                DevName::MotionDev,
-                CexName::BybitHW,
-                address,
-            )),
-            "xXpRSpAe1ajq4tJP78tS3X1AqNwJVQ4Vvb1Swg4hHQh" => Some(Dev::new(
-                DevName::CrpSource,
-                CexName::Coinbase2,
-                address,
-            )),
+            "GZVSEAajExLJEvACHHQcujBw7nJq98GWUEZtood9LM9b" => {
+                Some(Dev::new(DevName::MotionDev, CexName::BybitHW, address))
+            },
+            "xXpRSpAe1ajq4tJP78tS3X1AqNwJVQ4Vvb1Swg4hHQh" => {
+                Some(Dev::new(DevName::CrpSource, CexName::Coinbase2, address))
+            },
+            "8uWXcvQ3uCQ3WYwNy7M6pzMsQ85ZkYRkGDkEaisx5TNG" => {
+                Some(Dev::new(DevName::RoboTaxiDev, CexName::CoinbasePrime, address))
+            },
             _ => None,
         }
     }
@@ -64,6 +64,8 @@ pub enum DevName {
     MotionDev,
     #[serde(rename = "crp_source")]
     CrpSource,
+    #[serde(rename = "robo_taxi_dev")]
+    RoboTaxiDev,
     #[serde(rename = "unknown_dev")]
     #[default]
     UnknownDev,
@@ -77,6 +79,7 @@ impl std::fmt::Display for DevName {
         match self {
             DevName::MotionDev => write!(f, "motion_dev"),
             DevName::CrpSource => write!(f, "crp_source"),
+            DevName::RoboTaxiDev => write!(f, "robo_taxi_dev"),
             _ => write!(f, "unknown_dev"),
         }
     }
@@ -87,6 +90,7 @@ impl From<DevName> for String {
         match dev {
             DevName::MotionDev => "motion_dev".to_string(),
             DevName::CrpSource => "crp_source".to_string(),
+            DevName::RoboTaxiDev => "robo_taxi_dev".to_string(),
             _ => "unknown_dev".to_string(),
         }
     }
@@ -97,6 +101,7 @@ impl DevName {
         match self {
             DevName::MotionDev => "motion_dev",
             DevName::CrpSource => "crp_source",
+            DevName::RoboTaxiDev => "robo_taxi_dev",
             _ => "unknown_dev",
         }
     }

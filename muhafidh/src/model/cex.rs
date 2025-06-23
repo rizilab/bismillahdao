@@ -1,6 +1,7 @@
+use std::str::FromStr;
+
 use serde::Deserialize;
 use serde::Serialize;
-use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cex {
@@ -29,6 +30,7 @@ impl Cex {
             "2AQdpHJ2JpcEgPiATUXjQxA8QmafFegfQwSLWSprPicm" => Some(CexName::Coinbase2),
             "59L2oxymiQQ9Hvhh92nt8Y7nDYjsauFkdb3SybdnsG6h" => Some(CexName::Coinbase4),
             "9obNtb5GyUegcs3a1CbBkLuc5hEWynWfJC6gjz5uWQkE" => Some(CexName::Coinbase5),
+            "3vxheE5C46XzK4XftziRhwAf8QAfipD7HXXWj25mgkom" => Some(CexName::CoinbasePrime),
             "CKy3KzEMSL1PQV6Wppggoqi2nGA7teE4L7JipEK89yqj" => Some(CexName::CoinbaseCW1),
             "G6zmnfSdG6QJaDWYwbGQ4dpCSUC4gvjfZxYQ4ZharV7C" => Some(CexName::CoinbaseCW2),
             "VTvk7sG6QQ28iK3NEKRRD9fvPzk5pKpJL2iwgVqMFcL" => Some(CexName::CoinbaseCW3),
@@ -79,64 +81,177 @@ impl Cex {
             _ => None,
         }
     }
-    
+
     pub fn get_exchange_address(name: CexName) -> Option<solana_pubkey::Pubkey> {
         match name {
-            CexName::CoinbaseHW1 => Some(solana_pubkey::Pubkey::from_str("FpwQQhQQoEaVu3WU2qZMfF1hx48YyfwsLoRgXG83E99Q").unwrap()),
-            CexName::CoinbaseHW2 => Some(solana_pubkey::Pubkey::from_str("GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPqn7npE").unwrap()),
-            CexName::CoinbaseHW3 => Some(solana_pubkey::Pubkey::from_str("D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf").unwrap()),
-            CexName::CoinbaseHW4 => Some(solana_pubkey::Pubkey::from_str("DPqsobysNf5iA9w7zrQM8HLzCKZEDMkZsWbiidsAt1xo").unwrap()),
-            CexName::Coinbase1 => Some(solana_pubkey::Pubkey::from_str("H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS").unwrap()),
-            CexName::Coinbase2 => Some(solana_pubkey::Pubkey::from_str("2AQdpHJ2JpcEgPiATUXjQxA8QmafFegfQwSLWSprPicm").unwrap()),
-            CexName::Coinbase4 => Some(solana_pubkey::Pubkey::from_str("59L2oxymiQQ9Hvhh92nt8Y7nDYjsauFkdb3SybdnsG6h").unwrap()),
-            CexName::Coinbase5 => Some(solana_pubkey::Pubkey::from_str("9obNtb5GyUegcs3a1CbBkLuc5hEWynWfJC6gjz5uWQkE").unwrap()),
-            CexName::CoinbaseCW1 => Some(solana_pubkey::Pubkey::from_str("CKy3KzEMSL1PQV6Wppggoqi2nGA7teE4L7JipEK89yqj").unwrap()),
-            CexName::CoinbaseCW2 => Some(solana_pubkey::Pubkey::from_str("G6zmnfSdG6QJaDWYwbGQ4dpCSUC4gvjfZxYQ4ZharV7C").unwrap()),
-            CexName::CoinbaseCW3 => Some(solana_pubkey::Pubkey::from_str("VTvk7sG6QQ28iK3NEKRRD9fvPzk5pKpJL2iwgVqMFcL").unwrap()),
-            CexName::CoinbaseCW4 => Some(solana_pubkey::Pubkey::from_str("85cPov8nuRCkJ88VNMcHaHZ26Ux85PbSrHW4jg7izW4h").unwrap()),
-            CexName::CoinbaseCW5 => Some(solana_pubkey::Pubkey::from_str("D6gCBB3CZEMNbX1PDr3GtZAMhnebEumcgJ2yv8Etv5hF").unwrap()),
-            CexName::CoinbaseCW6 => Some(solana_pubkey::Pubkey::from_str("3qP77PzrHxSrW1S8dH4Ss1dmpJDHpC6ATVgwy5FmXDEf").unwrap()),
-            CexName::CoinbaseCW7 => Some(solana_pubkey::Pubkey::from_str("146yGthSmnTPuCo6Zfbmr56YbAyWZ3rzAhRcT7tTF5ha").unwrap()),
-            CexName::CoinbaseCW8 => Some(solana_pubkey::Pubkey::from_str("GXTrXayxMJUujsRTxYjAbkdbNvs6u2KN89UpG8f6eMAg").unwrap()),
-            CexName::CoinbaseCW9 => Some(solana_pubkey::Pubkey::from_str("AzAvbCQsXurd2PbGLYcB61tyvE8kLDaZShE1S5Bp3WeS").unwrap()),
-            CexName::CoinbaseCW10 => Some(solana_pubkey::Pubkey::from_str("4pHKEisSmAr5CSump4dJnTJgG6eugmtieXcUxDBcQcG5").unwrap()),
-            CexName::CoinbaseCW11 => Some(solana_pubkey::Pubkey::from_str("BmGyWBMEcjJD7JQD1jRJ5vEt7XX2LyVvtxwtTGV4N1bp").unwrap()),
-            CexName::CoinbaseCW12 => Some(solana_pubkey::Pubkey::from_str("py5jDEUAynTufQHM7P6Tu9M8NUd8JYux7aMcLXcC51q").unwrap()),
-            CexName::OKXHW1 => Some(solana_pubkey::Pubkey::from_str("is6MTRHEgyFLNTfYcuV4QBWLjrZBfmhVNYR6ccgr8KV").unwrap()),
-            CexName::OKXHW2 => Some(solana_pubkey::Pubkey::from_str("C68a6RCGLiPskbPYtAcsCjhG8tfTWYcoB4JjCrXFdqyo").unwrap()),
-            CexName::OKX => Some(solana_pubkey::Pubkey::from_str("5VCwKtCXgCJ6kit5FybXjvriW3xELsFDhYrPSqtJNmcD").unwrap()),
-            CexName::OKX2 => Some(solana_pubkey::Pubkey::from_str("9un5wqE3q4oCjyrDkwsdD48KteCJitQX5978Vh7KKxHo").unwrap()),
-            CexName::MEXC1 => Some(solana_pubkey::Pubkey::from_str("ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ").unwrap()),
-            CexName::MEXC2 => Some(solana_pubkey::Pubkey::from_str("5PAhQiYdLBd6SVdjzBQDxUAEFyDdF5ExNPQfcscnPRj5").unwrap()),
-            CexName::Kraken => Some(solana_pubkey::Pubkey::from_str("FWznbcNXWQuHTawe9RxvQ2LdCENssh12dsznf4RiouN5").unwrap()),
-            CexName::KrakenCW => Some(solana_pubkey::Pubkey::from_str("9cNE6KBg2Xmf34FPMMvzDF8yUHMrgLRzBV3vD7b1JnUS").unwrap()),
-            CexName::KrakenCW2 => Some(solana_pubkey::Pubkey::from_str("F7RkX6Y1qTfBqoX5oHoZEgrG1Dpy55UZ3GfWwPbM58nQ").unwrap()),
-            CexName::Binance8 => Some(solana_pubkey::Pubkey::from_str("3yFwqXBfZY4jBVUafQ1YEXw189y2dN3V5KQq9uzBDy1E").unwrap()),
-            CexName::Binance1 => Some(solana_pubkey::Pubkey::from_str("2ojv9BAiHUrvsm9gxDe7fJSzbNZSJcxZvf8dqmWGHG8S").unwrap()),
-            CexName::Binance2 => Some(solana_pubkey::Pubkey::from_str("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9").unwrap()),
-            CexName::Binance3 => Some(solana_pubkey::Pubkey::from_str("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM").unwrap()),
-            CexName::BinanceUSHW => Some(solana_pubkey::Pubkey::from_str("53unSgGWqEWANcPYRF35B2Bgf8BkszUtcccKiXwGGLyr").unwrap()),
-            CexName::Binance10 => Some(solana_pubkey::Pubkey::from_str("3gd3dqgtJ4jWfBfLYTX67DALFetjc5iS72sCgRhCkW2u").unwrap()),
-            CexName::Binance11 => Some(solana_pubkey::Pubkey::from_str("6QJzieMYfp7yr3EdrePaQoG3Ghxs2wM98xSLRu8Xh56U").unwrap()),
-            CexName::BinanceCW => Some(solana_pubkey::Pubkey::from_str("GBrURzmtWujJRTA3Bkvo7ZgWuZYLMMwPCwre7BejJXnK").unwrap()),
-            CexName::BitgetCW => Some(solana_pubkey::Pubkey::from_str("4S8C1yrRZmJYPzCqzEVjZYf6qCYWFoF7hWLRzssTCotX").unwrap()),
-            CexName::BitgetExchange => Some(solana_pubkey::Pubkey::from_str("A77HErqtfN1hLLpvZ9pCtu66FEtM8BveoaKbbMoZ4RiR").unwrap()),
-            CexName::Gateio1 => Some(solana_pubkey::Pubkey::from_str("u6PJ8DtQuPFnfmwHbGFULQ4u4EgjDiyYKjVEsynXq2w").unwrap()),
-            CexName::Gateio2 => Some(solana_pubkey::Pubkey::from_str("HiRpdAZifEsZGdzQ5Xo5wcnaH3D2Jj9SoNsUzcYNK78J").unwrap()),
-            CexName::BybitHW => Some(solana_pubkey::Pubkey::from_str("AC5RDfQFmDS1deWZos921JfqscXdByf8BKHs5ACWjtW2").unwrap()),
-            CexName::BybitCW => Some(solana_pubkey::Pubkey::from_str("42brAgAVNzMBP7aaktPvAmBSPEkehnFQejiZc53EpJFd").unwrap()),
-            CexName::BitfinexHW => Some(solana_pubkey::Pubkey::from_str("FxteHmLwG9nk1eL4pjNve3Eub2goGkkz6g6TbvdmW46a").unwrap()),
-            CexName::BitfinexCW => Some(solana_pubkey::Pubkey::from_str("FyJBKcfcEBzGN74uNxZ95GxnCxeuJJujQCELpPv14ZfN").unwrap()),
-            CexName::KuCoin1 => Some(solana_pubkey::Pubkey::from_str("57vSaRTqN9iXaemgh4AoDsZ63mcaoshfMK8NP3Z5QNbs").unwrap()),
-            CexName::KuCoin2 => Some(solana_pubkey::Pubkey::from_str("BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6").unwrap()),
-            CexName::KuCoin3 => Some(solana_pubkey::Pubkey::from_str("HVh6wHNBAsG3pq1Bj5oCzRjoWKVogEDHwUHkRz3ekFgt").unwrap()),
-            CexName::KuCoinCW => Some(solana_pubkey::Pubkey::from_str("DBmae92YTQKLsNzXcPscxiwPqMcz9stQr2prB5ZCAHPd").unwrap()),
-            CexName::PoloniexHW => Some(solana_pubkey::Pubkey::from_str("7Ci23i82UMa8RpfVbdMjTytiDi2VoZS8uLyHhZBV2Qy7").unwrap()),
-            CexName::LBank => Some(solana_pubkey::Pubkey::from_str("8s9j5qUtuE9PGA5s7QeAXEh5oc2UGr71pmJXgyiZMHkt").unwrap()),
-            CexName::StakecomHotWallet => Some(solana_pubkey::Pubkey::from_str("G9X7F4JzLzbSGMCndiBdWNi5YzZZakmtkdwq7xS3Q3FE").unwrap()),
-            CexName::DeBridgeVault => Some(solana_pubkey::Pubkey::from_str("2snHHreXbpJ7UwZxPe37gnUNf7Wx7wv6UKDSR2JckKuS").unwrap()),
-            CexName::RevolutHotWallet => Some(solana_pubkey::Pubkey::from_str("Biw4eeaiYYYq6xSqEd7GzdwsrrndxA8mqdxfAtG3PTUU").unwrap()),
-            CexName::BitStampHotWallet => Some(solana_pubkey::Pubkey::from_str("HBxZShcE86UMmF93KUM8eWJKqeEXi5cqWCLYLMMhqMYm").unwrap()),
+            CexName::CoinbaseHW1 => {
+                Some(solana_pubkey::Pubkey::from_str("FpwQQhQQoEaVu3WU2qZMfF1hx48YyfwsLoRgXG83E99Q").unwrap())
+            },
+            CexName::CoinbaseHW2 => {
+                Some(solana_pubkey::Pubkey::from_str("GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPqn7npE").unwrap())
+            },
+            CexName::CoinbaseHW3 => {
+                Some(solana_pubkey::Pubkey::from_str("D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf").unwrap())
+            },
+            CexName::CoinbaseHW4 => {
+                Some(solana_pubkey::Pubkey::from_str("DPqsobysNf5iA9w7zrQM8HLzCKZEDMkZsWbiidsAt1xo").unwrap())
+            },
+            CexName::Coinbase1 => {
+                Some(solana_pubkey::Pubkey::from_str("H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS").unwrap())
+            },
+            CexName::Coinbase2 => {
+                Some(solana_pubkey::Pubkey::from_str("2AQdpHJ2JpcEgPiATUXjQxA8QmafFegfQwSLWSprPicm").unwrap())
+            },
+            CexName::Coinbase4 => {
+                Some(solana_pubkey::Pubkey::from_str("59L2oxymiQQ9Hvhh92nt8Y7nDYjsauFkdb3SybdnsG6h").unwrap())
+            },
+            CexName::Coinbase5 => {
+                Some(solana_pubkey::Pubkey::from_str("9obNtb5GyUegcs3a1CbBkLuc5hEWynWfJC6gjz5uWQkE").unwrap())
+            },
+            CexName::CoinbasePrime => {
+                Some(solana_pubkey::Pubkey::from_str("3vxheE5C46XzK4XftziRhwAf8QAfipD7HXXWj25mgkom").unwrap())
+            },
+            CexName::CoinbaseCW1 => {
+                Some(solana_pubkey::Pubkey::from_str("CKy3KzEMSL1PQV6Wppggoqi2nGA7teE4L7JipEK89yqj").unwrap())
+            },
+            CexName::CoinbaseCW2 => {
+                Some(solana_pubkey::Pubkey::from_str("G6zmnfSdG6QJaDWYwbGQ4dpCSUC4gvjfZxYQ4ZharV7C").unwrap())
+            },
+            CexName::CoinbaseCW3 => {
+                Some(solana_pubkey::Pubkey::from_str("VTvk7sG6QQ28iK3NEKRRD9fvPzk5pKpJL2iwgVqMFcL").unwrap())
+            },
+            CexName::CoinbaseCW4 => {
+                Some(solana_pubkey::Pubkey::from_str("85cPov8nuRCkJ88VNMcHaHZ26Ux85PbSrHW4jg7izW4h").unwrap())
+            },
+            CexName::CoinbaseCW5 => {
+                Some(solana_pubkey::Pubkey::from_str("D6gCBB3CZEMNbX1PDr3GtZAMhnebEumcgJ2yv8Etv5hF").unwrap())
+            },
+            CexName::CoinbaseCW6 => {
+                Some(solana_pubkey::Pubkey::from_str("3qP77PzrHxSrW1S8dH4Ss1dmpJDHpC6ATVgwy5FmXDEf").unwrap())
+            },
+            CexName::CoinbaseCW7 => {
+                Some(solana_pubkey::Pubkey::from_str("146yGthSmnTPuCo6Zfbmr56YbAyWZ3rzAhRcT7tTF5ha").unwrap())
+            },
+            CexName::CoinbaseCW8 => {
+                Some(solana_pubkey::Pubkey::from_str("GXTrXayxMJUujsRTxYjAbkdbNvs6u2KN89UpG8f6eMAg").unwrap())
+            },
+            CexName::CoinbaseCW9 => {
+                Some(solana_pubkey::Pubkey::from_str("AzAvbCQsXurd2PbGLYcB61tyvE8kLDaZShE1S5Bp3WeS").unwrap())
+            },
+            CexName::CoinbaseCW10 => {
+                Some(solana_pubkey::Pubkey::from_str("4pHKEisSmAr5CSump4dJnTJgG6eugmtieXcUxDBcQcG5").unwrap())
+            },
+            CexName::CoinbaseCW11 => {
+                Some(solana_pubkey::Pubkey::from_str("BmGyWBMEcjJD7JQD1jRJ5vEt7XX2LyVvtxwtTGV4N1bp").unwrap())
+            },
+            CexName::CoinbaseCW12 => {
+                Some(solana_pubkey::Pubkey::from_str("py5jDEUAynTufQHM7P6Tu9M8NUd8JYux7aMcLXcC51q").unwrap())
+            },
+            CexName::OKXHW1 => {
+                Some(solana_pubkey::Pubkey::from_str("is6MTRHEgyFLNTfYcuV4QBWLjrZBfmhVNYR6ccgr8KV").unwrap())
+            },
+            CexName::OKXHW2 => {
+                Some(solana_pubkey::Pubkey::from_str("C68a6RCGLiPskbPYtAcsCjhG8tfTWYcoB4JjCrXFdqyo").unwrap())
+            },
+            CexName::OKX => {
+                Some(solana_pubkey::Pubkey::from_str("5VCwKtCXgCJ6kit5FybXjvriW3xELsFDhYrPSqtJNmcD").unwrap())
+            },
+            CexName::OKX2 => {
+                Some(solana_pubkey::Pubkey::from_str("9un5wqE3q4oCjyrDkwsdD48KteCJitQX5978Vh7KKxHo").unwrap())
+            },
+            CexName::MEXC1 => {
+                Some(solana_pubkey::Pubkey::from_str("ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ").unwrap())
+            },
+            CexName::MEXC2 => {
+                Some(solana_pubkey::Pubkey::from_str("5PAhQiYdLBd6SVdjzBQDxUAEFyDdF5ExNPQfcscnPRj5").unwrap())
+            },
+            CexName::Kraken => {
+                Some(solana_pubkey::Pubkey::from_str("FWznbcNXWQuHTawe9RxvQ2LdCENssh12dsznf4RiouN5").unwrap())
+            },
+            CexName::KrakenCW => {
+                Some(solana_pubkey::Pubkey::from_str("9cNE6KBg2Xmf34FPMMvzDF8yUHMrgLRzBV3vD7b1JnUS").unwrap())
+            },
+            CexName::KrakenCW2 => {
+                Some(solana_pubkey::Pubkey::from_str("F7RkX6Y1qTfBqoX5oHoZEgrG1Dpy55UZ3GfWwPbM58nQ").unwrap())
+            },
+            CexName::Binance8 => {
+                Some(solana_pubkey::Pubkey::from_str("3yFwqXBfZY4jBVUafQ1YEXw189y2dN3V5KQq9uzBDy1E").unwrap())
+            },
+            CexName::Binance1 => {
+                Some(solana_pubkey::Pubkey::from_str("2ojv9BAiHUrvsm9gxDe7fJSzbNZSJcxZvf8dqmWGHG8S").unwrap())
+            },
+            CexName::Binance2 => {
+                Some(solana_pubkey::Pubkey::from_str("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9").unwrap())
+            },
+            CexName::Binance3 => {
+                Some(solana_pubkey::Pubkey::from_str("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM").unwrap())
+            },
+            CexName::BinanceUSHW => {
+                Some(solana_pubkey::Pubkey::from_str("53unSgGWqEWANcPYRF35B2Bgf8BkszUtcccKiXwGGLyr").unwrap())
+            },
+            CexName::Binance10 => {
+                Some(solana_pubkey::Pubkey::from_str("3gd3dqgtJ4jWfBfLYTX67DALFetjc5iS72sCgRhCkW2u").unwrap())
+            },
+            CexName::Binance11 => {
+                Some(solana_pubkey::Pubkey::from_str("6QJzieMYfp7yr3EdrePaQoG3Ghxs2wM98xSLRu8Xh56U").unwrap())
+            },
+            CexName::BinanceCW => {
+                Some(solana_pubkey::Pubkey::from_str("GBrURzmtWujJRTA3Bkvo7ZgWuZYLMMwPCwre7BejJXnK").unwrap())
+            },
+            CexName::BitgetCW => {
+                Some(solana_pubkey::Pubkey::from_str("4S8C1yrRZmJYPzCqzEVjZYf6qCYWFoF7hWLRzssTCotX").unwrap())
+            },
+            CexName::BitgetExchange => {
+                Some(solana_pubkey::Pubkey::from_str("A77HErqtfN1hLLpvZ9pCtu66FEtM8BveoaKbbMoZ4RiR").unwrap())
+            },
+            CexName::Gateio1 => {
+                Some(solana_pubkey::Pubkey::from_str("u6PJ8DtQuPFnfmwHbGFULQ4u4EgjDiyYKjVEsynXq2w").unwrap())
+            },
+            CexName::Gateio2 => {
+                Some(solana_pubkey::Pubkey::from_str("HiRpdAZifEsZGdzQ5Xo5wcnaH3D2Jj9SoNsUzcYNK78J").unwrap())
+            },
+            CexName::BybitHW => {
+                Some(solana_pubkey::Pubkey::from_str("AC5RDfQFmDS1deWZos921JfqscXdByf8BKHs5ACWjtW2").unwrap())
+            },
+            CexName::BybitCW => {
+                Some(solana_pubkey::Pubkey::from_str("42brAgAVNzMBP7aaktPvAmBSPEkehnFQejiZc53EpJFd").unwrap())
+            },
+            CexName::BitfinexHW => {
+                Some(solana_pubkey::Pubkey::from_str("FxteHmLwG9nk1eL4pjNve3Eub2goGkkz6g6TbvdmW46a").unwrap())
+            },
+            CexName::BitfinexCW => {
+                Some(solana_pubkey::Pubkey::from_str("FyJBKcfcEBzGN74uNxZ95GxnCxeuJJujQCELpPv14ZfN").unwrap())
+            },
+            CexName::KuCoin1 => {
+                Some(solana_pubkey::Pubkey::from_str("57vSaRTqN9iXaemgh4AoDsZ63mcaoshfMK8NP3Z5QNbs").unwrap())
+            },
+            CexName::KuCoin2 => {
+                Some(solana_pubkey::Pubkey::from_str("BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6").unwrap())
+            },
+            CexName::KuCoin3 => {
+                Some(solana_pubkey::Pubkey::from_str("HVh6wHNBAsG3pq1Bj5oCzRjoWKVogEDHwUHkRz3ekFgt").unwrap())
+            },
+            CexName::KuCoinCW => {
+                Some(solana_pubkey::Pubkey::from_str("DBmae92YTQKLsNzXcPscxiwPqMcz9stQr2prB5ZCAHPd").unwrap())
+            },
+            CexName::PoloniexHW => {
+                Some(solana_pubkey::Pubkey::from_str("7Ci23i82UMa8RpfVbdMjTytiDi2VoZS8uLyHhZBV2Qy7").unwrap())
+            },
+            CexName::LBank => {
+                Some(solana_pubkey::Pubkey::from_str("8s9j5qUtuE9PGA5s7QeAXEh5oc2UGr71pmJXgyiZMHkt").unwrap())
+            },
+            CexName::StakecomHotWallet => {
+                Some(solana_pubkey::Pubkey::from_str("G9X7F4JzLzbSGMCndiBdWNi5YzZZakmtkdwq7xS3Q3FE").unwrap())
+            },
+            CexName::DeBridgeVault => {
+                Some(solana_pubkey::Pubkey::from_str("2snHHreXbpJ7UwZxPe37gnUNf7Wx7wv6UKDSR2JckKuS").unwrap())
+            },
+            CexName::RevolutHotWallet => {
+                Some(solana_pubkey::Pubkey::from_str("Biw4eeaiYYYq6xSqEd7GzdwsrrndxA8mqdxfAtG3PTUU").unwrap())
+            },
+            CexName::BitStampHotWallet => {
+                Some(solana_pubkey::Pubkey::from_str("HBxZShcE86UMmF93KUM8eWJKqeEXi5cqWCLYLMMhqMYm").unwrap())
+            },
         }
     }
 }
@@ -159,6 +274,8 @@ pub enum CexName {
     Coinbase4,
     #[serde(rename = "coinbase_5")]
     Coinbase5,
+    #[serde(rename = "coinbase_prime")]
+    CoinbasePrime,
     #[serde(rename = "coinbase_cw1")]
     CoinbaseCW1,
     #[serde(rename = "coinbase_cw2")]
@@ -269,6 +386,7 @@ impl std::fmt::Display for CexName {
             CexName::Coinbase2 => write!(f, "coinbase_2"),
             CexName::Coinbase4 => write!(f, "coinbase_4"),
             CexName::Coinbase5 => write!(f, "coinbase_5"),
+            CexName::CoinbasePrime => write!(f, "coinbase_prime"),
             CexName::CoinbaseCW1 => write!(f, "coinbase_cw1"),
             CexName::CoinbaseCW2 => write!(f, "coinbase_cw2"),
             CexName::CoinbaseCW3 => write!(f, "coinbase_cw3"),
@@ -331,6 +449,7 @@ impl From<CexName> for String {
             CexName::Coinbase2 => "coinbase_2".to_string(),
             CexName::Coinbase4 => "coinbase_4".to_string(),
             CexName::Coinbase5 => "coinbase_5".to_string(),
+            CexName::CoinbasePrime => "coinbase_prime".to_string(),
             CexName::CoinbaseCW1 => "coinbase_cw1".to_string(),
             CexName::CoinbaseCW2 => "coinbase_cw2".to_string(),
             CexName::CoinbaseCW3 => "coinbase_cw3".to_string(),
@@ -393,6 +512,7 @@ impl CexName {
             CexName::Coinbase2 => "coinbase_2",
             CexName::Coinbase4 => "coinbase_4",
             CexName::Coinbase5 => "coinbase_5",
+            CexName::CoinbasePrime => "coinbase_prime",
             CexName::CoinbaseCW1 => "coinbase_cw1",
             CexName::CoinbaseCW2 => "coinbase_cw2",
             CexName::CoinbaseCW3 => "coinbase_cw3",

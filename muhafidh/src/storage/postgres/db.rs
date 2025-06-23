@@ -64,7 +64,9 @@ impl TokenMetadataDb {
                 &dto.uri,
                 &dto.creator.to_string(),
                 &(dto.created_at as i64),
-                &dto.cex_sources.as_ref().map(|sources| sources.iter().map(|p| p.to_string()).collect::<Vec<String>>()),
+                &dto.cex_sources
+                    .as_ref()
+                    .map(|sources| sources.iter().map(|p| p.to_string()).collect::<Vec<String>>()),
                 &(dto.cex_updated_at.unwrap_or(0) as i64),
                 &(dto.updated_at.unwrap_or(0) as i64),
                 &dto.associated_bonding_curve.map(|p| p.to_string()),

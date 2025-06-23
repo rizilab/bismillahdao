@@ -29,7 +29,6 @@ pub struct TransactionEdge {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CreatorConnectionGraph {
     graph: Graph<AddressNode, TransactionEdge>,
-    #[serde(skip)]
     node_indices: HashMap<Pubkey, NodeIndex>,
 }
 

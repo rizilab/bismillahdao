@@ -16,11 +16,12 @@ use crate::err_with_loc;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::model::cex::Cex;
 use crate::model::creator::graph::SharedCreatorConnectionGraph;
-use crate::model::dev::Dev;
 use crate::model::creator::metadata::CreatorMetadata;
+use crate::model::dev::Dev;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
 use crate::storage::StorageEngine;
+use crate::storage::redis::model::TokenAnalyzedCache;
 
 pub struct CreatorHandlerMetadata {
     receiver: mpsc::Receiver<CreatorHandler>,
@@ -132,21 +133,21 @@ impl CreatorHandlerMetadata {
         }
 
         // Publish event
-        let event_data = serde_json::json!({
-          "mint": mint.to_string(),
-          "name": name,
-          "uri": uri,
-          "dev_name": dev_name,
-          "creator": dev.to_string(),
-          "cex_name": cex.name.to_string(),
-          "cex_address": cex.address.to_string(),
-          "bonding_curve": bonding_curve.to_string(),
-          "created_at": created_at,
-          "updated_at": updated_at,
-          "node_count": connection_graph.get_node_count(),
-          "edge_count": connection_graph.get_edge_count(),
-          "graph": connection_graph
-        });
+        let event_data = TokenAnalyzedCache {
+            mint,
+            name,
+            uri,
+            dev_name,
+            creator: dev,
+            cex_name: cex.name.to_string(),
+            cex_address: cex.address,
+            bonding_curve,
+            created_at,
+            updated_at,
+            node_count: connection_graph.get_node_count(),
+            edge_count: connection_graph.get_edge_count(),
+            graph: connection_graph,
+        };
 
         if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
             error!("publish_token_cex_updated_event_failed::{}::mint::{}::error::{}", cex.name, mint, e);
@@ -291,22 +292,22 @@ impl CreatorHandlerMetadata {
         }
         let dev_name = Dev::get_dev_name(creator_metadata.original_creator.clone()).unwrap_or_default();
         // Publish event
-        let event_data = serde_json::json!({
-            "mint": mint.to_string(),
-            "name": creator_metadata.token_name,
-            "uri": creator_metadata.token_uri,
-            "dev_name": dev_name,
-            "creator": creator_metadata.original_creator.to_string(),
-            "cex_name": "unknown",
-            "cex_address": "unknown",
-            "bonding_curve": creator_metadata.bonding_curve.unwrap_or_default().to_string(),
-            "created_at": creator_metadata.created_at.to_string(),
-            "updated_at": updated_at.to_string(),
-            "node_count": connection_graph.get_node_count(),
-            "edge_count": connection_graph.get_edge_count(),
-            "graph": connection_graph
-        });
-  
+        let event_data = TokenAnalyzedCache {
+            mint,
+            name: creator_metadata.token_name.clone(),
+            uri: creator_metadata.token_uri.clone(),
+            dev_name,
+            creator: creator_metadata.original_creator,
+            cex_name: "unknown".to_string(),
+            cex_address: Pubkey::default(),
+            bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
+            created_at: creator_metadata.created_at,
+            updated_at,
+            node_count: connection_graph.get_node_count(),
+            edge_count: connection_graph.get_edge_count(),
+            graph: connection_graph,
+        };
+
         if let Err(e) = self.db.redis.queue.publish("max_depth_reached", &event_data).await {
             error!("publish_max_depth_reached_event_failed::mint::{}::error::{}", mint, e);
         } else {
@@ -496,7 +497,7 @@ impl CreatorHandlerOperator {
             if let Err(e) = self.db.redis.kv.set(&address_key, &address_data).await {
                 error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
             }
-            
+
             child_token.cancel();
             return Ok(());
         }
