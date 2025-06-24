@@ -32,14 +32,14 @@ impl From<TokenMetadata> for NewTokenCache {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenAnalyzedCache {
-    pub mint: solana_pubkey::Pubkey,
+    pub mint: String,
     pub name: String,
     pub uri: String,
     pub dev_name: DevName,
-    pub creator: solana_pubkey::Pubkey,
+    pub creator: String,
     pub cex_name: String,
-    pub cex_address: solana_pubkey::Pubkey,
-    pub bonding_curve: solana_pubkey::Pubkey,
+    pub cex_address: String,
+    pub bonding_curve: String,
     pub created_at: u64,
     pub updated_at: u64,
     pub node_count: usize,

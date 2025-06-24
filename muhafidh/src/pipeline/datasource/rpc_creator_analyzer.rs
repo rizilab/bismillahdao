@@ -99,8 +99,8 @@ impl Datasource for RpcTransactionAnalyzer {
         let max_concurrent_requests = self.config.max_concurrent_requests;
         let config = self.config.clone();
 
-        let (signature_sender, signature_receiver) = mpsc::channel(1000);
-        let (transaction_sender, transaction_receiver) = mpsc::channel(1000);
+        let (signature_sender, signature_receiver) = mpsc::channel(5000);
+        let (transaction_sender, transaction_receiver) = mpsc::channel(5000);
 
         let signature_fetcher = signature_fetcher(
             rpc_config.clone(),

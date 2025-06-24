@@ -28,6 +28,7 @@ impl Dev {
             "GZVSEAajExLJEvACHHQcujBw7nJq98GWUEZtood9LM9b" => Some(CexName::BybitHW),
             "xXpRSpAe1ajq4tJP78tS3X1AqNwJVQ4Vvb1Swg4hHQh" => Some(CexName::Coinbase2),
             "8uWXcvQ3uCQ3WYwNy7M6pzMsQ85ZkYRkGDkEaisx5TNG" => Some(CexName::CoinbasePrime),
+            "G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t" => Some(CexName::Binance1),
             _ => None,
         }
     }
@@ -44,6 +45,9 @@ impl Dev {
             "8uWXcvQ3uCQ3WYwNy7M6pzMsQ85ZkYRkGDkEaisx5TNG" => {
                 Some(Dev::new(DevName::RoboTaxiDev, CexName::CoinbasePrime, address))
             },
+            "G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t" => {
+                Some(Dev::new(DevName::CexDepoWallet, CexName::Binance1, address))
+            },
             _ => None,
         }
     }
@@ -53,6 +57,8 @@ impl Dev {
         match address.to_string().as_str() {
             "GZVSEAajExLJEvACHHQcujBw7nJq98GWUEZtood9LM9b" => Some(DevName::MotionDev),
             "xXpRSpAe1ajq4tJP78tS3X1AqNwJVQ4Vvb1Swg4hHQh" => Some(DevName::CrpSource),
+            "G2YxRa6wt1qePMwfJzdXZG62ej4qaTC7YURzuh2Lwd3t" => Some(DevName::CexDepoWallet),
+            "8uWXcvQ3uCQ3WYwNy7M6pzMsQ85ZkYRkGDkEaisx5TNG" => Some(DevName::RoboTaxiDev),
             _ => None,
         }
     }
@@ -66,6 +72,8 @@ pub enum DevName {
     CrpSource,
     #[serde(rename = "robo_taxi_dev")]
     RoboTaxiDev,
+    #[serde(rename = "cex_depo_wallet")]
+    CexDepoWallet,
     #[serde(rename = "unknown_dev")]
     #[default]
     UnknownDev,
@@ -80,6 +88,7 @@ impl std::fmt::Display for DevName {
             DevName::MotionDev => write!(f, "motion_dev"),
             DevName::CrpSource => write!(f, "crp_source"),
             DevName::RoboTaxiDev => write!(f, "robo_taxi_dev"),
+            DevName::CexDepoWallet => write!(f, "exchange_deposit_wallet"),
             _ => write!(f, "unknown_dev"),
         }
     }
@@ -91,6 +100,7 @@ impl From<DevName> for String {
             DevName::MotionDev => "motion_dev".to_string(),
             DevName::CrpSource => "crp_source".to_string(),
             DevName::RoboTaxiDev => "robo_taxi_dev".to_string(),
+            DevName::CexDepoWallet => "exchange_deposit_wallet".to_string(),
             _ => "unknown_dev".to_string(),
         }
     }
@@ -102,6 +112,7 @@ impl DevName {
             DevName::MotionDev => "motion_dev",
             DevName::CrpSource => "crp_source",
             DevName::RoboTaxiDev => "robo_taxi_dev",
+            DevName::CexDepoWallet => "exchange_deposit_wallet",
             _ => "unknown_dev",
         }
     }

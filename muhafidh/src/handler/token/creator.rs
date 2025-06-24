@@ -134,14 +134,14 @@ impl CreatorHandlerMetadata {
 
         // Publish event
         let event_data = TokenAnalyzedCache {
-            mint,
+            mint: mint.to_string(),
             name,
             uri,
             dev_name,
-            creator: dev,
+            creator: dev.to_string(),
             cex_name: cex.name.to_string(),
-            cex_address: cex.address,
-            bonding_curve,
+            cex_address: cex.address.to_string(),
+            bonding_curve: bonding_curve.to_string(),
             created_at,
             updated_at,
             node_count: connection_graph.get_node_count(),
@@ -293,14 +293,14 @@ impl CreatorHandlerMetadata {
         let dev_name = Dev::get_dev_name(creator_metadata.original_creator.clone()).unwrap_or_default();
         // Publish event
         let event_data = TokenAnalyzedCache {
-            mint,
+            mint: mint.to_string(),
             name: creator_metadata.token_name.clone(),
             uri: creator_metadata.token_uri.clone(),
             dev_name,
-            creator: creator_metadata.original_creator,
+            creator: creator_metadata.original_creator.to_string(),
             cex_name: "unknown".to_string(),
-            cex_address: Pubkey::default(),
-            bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
+            cex_address: Pubkey::default().to_string(),
+            bonding_curve: creator_metadata.bonding_curve.unwrap_or_default().to_string(),
             created_at: creator_metadata.created_at,
             updated_at,
             node_count: connection_graph.get_node_count(),
@@ -441,7 +441,7 @@ impl CreatorHandlerOperator {
                 mint: creator_metadata.mint,
                 name: creator_metadata.token_name.clone(),
                 uri: creator_metadata.token_uri.clone(),
-                dev: sender,
+                dev: creator_metadata.original_creator,
                 created_at: creator_metadata.created_at,
                 bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
             }) {
@@ -477,7 +477,7 @@ impl CreatorHandlerOperator {
                 mint: creator_metadata.mint,
                 name: creator_metadata.token_name.clone(),
                 uri: creator_metadata.token_uri.clone(),
-                dev: sender,
+                dev: creator_metadata.original_creator,
                 created_at: creator_metadata.created_at,
                 bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
             }) {
@@ -512,7 +512,7 @@ impl CreatorHandlerOperator {
                 mint: creator_metadata.mint,
                 name: creator_metadata.token_name.clone(),
                 uri: creator_metadata.token_uri.clone(),
-                dev: sender,
+                dev: creator_metadata.original_creator,
                 created_at: creator_metadata.created_at,
                 bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
             }) {

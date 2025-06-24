@@ -29,6 +29,7 @@ pub struct TransactionEdge {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CreatorConnectionGraph {
     graph: Graph<AddressNode, TransactionEdge>,
+    #[serde(skip)]
     node_indices: HashMap<Pubkey, NodeIndex>,
 }
 
@@ -40,11 +41,30 @@ impl CreatorConnectionGraph {
         }
     }
 
+    // Rebuild the node_indices HashMap from the graph (useful after deserialization)
+    pub fn rebuild_indices(&mut self) {
+        self.node_indices.clear();
+        for node_index in self.graph.node_indices() {
+            if let Some(node) = self.graph.node_weight(node_index) {
+                self.node_indices.insert(node.address, node_index);
+            }
+        }
+    }
+
+    // Ensure indices are available (rebuild if empty and graph has nodes)
+    fn ensure_indices(&mut self) {
+        if self.node_indices.is_empty() && self.graph.node_count() > 0 {
+            self.rebuild_indices();
+        }
+    }
+
     pub fn add_node(
         &mut self,
         address: Pubkey,
         is_cex: bool,
     ) -> NodeIndex {
+        self.ensure_indices();
+
         if let Some(&idx) = self.node_indices.get(&address) {
             return idx;
         }
@@ -142,7 +162,15 @@ impl SharedCreatorConnectionGraph {
     }
 
     pub async fn clone_graph(&self) -> CreatorConnectionGraph {
-        self.inner.read().await.clone()
+        let mut graph = self.inner.read().await.clone();
+        // Ensure indices are rebuilt after cloning (since they're skipped in serialization)
+        graph.rebuild_indices();
+        graph
+    }
+
+    // Method to ensure indices are available (useful after deserialization)
+    pub async fn ensure_indices(&self) {
+        self.inner.write().await.ensure_indices();
     }
 }
 
