@@ -54,7 +54,6 @@ impl CreatorInstructionProcessor {
         self.creator_analyzer_config.clone()
     }
 
-    // Method to handle pipeline failures
     pub async fn handle_pipeline_failure(&self) {
         error!(
             "pipeline_failure::mint::{}::account::{}::marking_as_failed",
@@ -62,14 +61,13 @@ impl CreatorInstructionProcessor {
         );
 
         let mut failed_metadata = (*self.creator_metadata).clone();
-        failed_metadata.mark_as_failed();
+        failed_metadata.mark_as_failed().await;
 
         debug!(
             "adding_to_failed_queue::mint::{}::account::{}::retry_count::{}::status::{:?}",
             failed_metadata.mint, failed_metadata.address, failed_metadata.retry_count, failed_metadata.status
         );
 
-        // Add to failed queue for retry
         if let Err(e) = self.creator_handler.add_failed_account(&failed_metadata).await {
             error!(
                 "failed_to_add_to_failed_queue_after_pipeline_failure::account::{}::error::{}",

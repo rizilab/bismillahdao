@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,12 +21,36 @@ pub enum AccountStatus {
     BfsQueue,    // Failed during BFS processing
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableBfsState {
+    pub visited_addresses: HashMap<Pubkey, (usize, Vec<Pubkey>)>,
+    pub history: Vec<Pubkey>,
+    pub queue: VecDeque<(Pubkey, usize, Vec<Pubkey>)>,
+    pub processed_cex: HashSet<Pubkey>,
+}
+
+#[derive(Debug, Clone)]
 pub struct SharedBfsState {
     pub visited_addresses: Arc<RwLock<HashMap<Pubkey, (usize, Vec<Pubkey>)>>>,
     pub history: Arc<RwLock<Vec<Pubkey>>>,
     pub queue: Arc<RwLock<VecDeque<(Pubkey, usize, Vec<Pubkey>)>>>,
     pub processed_cex: Arc<RwLock<HashSet<Pubkey>>>,
+    // Runtime-only state (not serialized)
+    pub processing_addresses: Arc<RwLock<HashSet<Pubkey>>>, // Track addresses currently being scanned
+    pub completion_sent: Arc<AtomicBool>, // Atomic flag to prevent duplicate MaxDepthReached events
+}
+
+impl Default for SharedBfsState {
+    fn default() -> Self {
+        Self {
+            visited_addresses: Arc::new(RwLock::new(HashMap::new())),
+            history: Arc::new(RwLock::new(Vec::new())),
+            queue: Arc::new(RwLock::new(VecDeque::new())),
+            processed_cex: Arc::new(RwLock::new(HashSet::new())),
+            processing_addresses: Arc::new(RwLock::new(HashSet::new())),
+            completion_sent: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 impl SharedBfsState {
@@ -41,6 +66,30 @@ impl SharedBfsState {
             history: Arc::new(RwLock::new(Vec::new())),
             queue: Arc::new(RwLock::new(queue)),
             processed_cex: Arc::new(RwLock::new(HashSet::new())),
+            processing_addresses: Arc::new(RwLock::new(HashSet::new())),
+            completion_sent: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    // Convert to serializable state
+    pub async fn to_serializable(&self) -> SerializableBfsState {
+        SerializableBfsState {
+            visited_addresses: self.visited_addresses.read().await.clone(),
+            history: self.history.read().await.clone(),
+            queue: self.queue.read().await.clone(),
+            processed_cex: self.processed_cex.read().await.clone(),
+        }
+    }
+
+    // Create from serializable state
+    pub fn from_serializable(serializable: SerializableBfsState) -> Self {
+        Self {
+            visited_addresses: Arc::new(RwLock::new(serializable.visited_addresses)),
+            history: Arc::new(RwLock::new(serializable.history)),
+            queue: Arc::new(RwLock::new(serializable.queue)),
+            processed_cex: Arc::new(RwLock::new(serializable.processed_cex)),
+            processing_addresses: Arc::new(RwLock::new(HashSet::new())), // Always start fresh
+            completion_sent: Arc::new(AtomicBool::new(false)), // Always start fresh
         }
     }
 }
@@ -70,11 +119,38 @@ pub struct CreatorMetadata {
     pub cex_sources: Vec<Pubkey>,
     pub cex_updated_at: u64,
     pub wallet_connection: SharedCreatorConnectionGraph,
-
-    // BFS state - using SharedBfsState for async mutability
-    #[serde(skip)]
+    
+    // BFS state - serialized as SerializableBfsState
+    #[serde(with = "bfs_state_serde")]
     pub bfs_state: SharedBfsState,
     pub max_depth: usize,
+}
+
+// Custom serde module for BFS state
+mod bfs_state_serde {
+    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(bfs_state: &SharedBfsState, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // For serialization, we need to use tokio::task::block_in_place or return an error
+        // Since we can't use async in serde, we'll use a simpler approach
+        // In practice, you might want to handle this differently based on your async runtime
+        let serializable = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(bfs_state.to_serializable())
+        });
+        serializable.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SharedBfsState, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let serializable = SerializableBfsState::deserialize(deserializer)?;
+        Ok(SharedBfsState::from_serializable(serializable))
+    }
 }
 
 impl CreatorMetadata {
@@ -115,40 +191,74 @@ impl CreatorMetadata {
         }
     }
 
+    // Keep for backwards compatibility if needed, but it's a no-op now
+    pub async fn initialize_bfs_state(&mut self) {
+        // No-op since proper serialization preserves state
+        // If you need to reset state for some reason, you can uncomment:
+        // self.bfs_state = SharedBfsState::new(self.address);
+    }
+
     // Create from NewTokenCache
     pub async fn from_token(
-        token: NewTokenCache,
-        max_depth: usize,
+        token: NewTokenCache, 
+        max_depth: usize
     ) -> Self {
-        let mut metadata = Self::new(token.mint, token.bonding_curve, token.creator, max_depth).await;
-        metadata.token_name = token.name;
-        metadata.token_symbol = token.symbol;
-        metadata.token_uri = token.uri;
-        metadata.created_at = token.created_at;
-
-        // Ensure the initial creator is marked as visited at depth 0
-        metadata.mark_visited(token.creator, 0, vec![token.creator]).await;
-
+        let metadata = Self {
+            mint: token.mint,
+            bonding_curve: token.bonding_curve,
+            token_name: token.name,
+            token_symbol: token.symbol,
+            token_uri: token.uri,
+            address: token.creator,
+            depth: 0,
+            original_creator: token.creator,
+            created_at: token.created_at,
+            latest_update: chrono::Utc::now().timestamp() as u64,
+            retry_count: 0,
+            status: AccountStatus::NewAccount,
+            total_received: 0.0,
+            cex_sources: Vec::new(),
+            cex_updated_at: 0,
+            wallet_connection: SharedCreatorConnectionGraph::new(),
+            bfs_state: SharedBfsState::new(token.creator),
+            max_depth,
+        };
+        
+        // Initialize wallet connection with the creator address
+        metadata.wallet_connection.add_node(token.creator, false).await;
+        
         metadata
     }
 
     // Mark as failed and increment retry count
-    pub fn mark_as_failed(&mut self) {
+    pub async fn mark_as_failed(&mut self) {
         self.retry_count += 1;
         self.status = AccountStatus::Failed;
         self.latest_update = chrono::Utc::now().timestamp() as u64;
+        // Clear processing addresses since this account might be retried
+        self.bfs_state.processing_addresses.write().await.clear();
+        // Reset completion flag since this account might be retried
+        self.reset_completion_flag();
     }
 
     // Mark as unprocessed (for buffer overflow)
-    pub fn mark_as_unprocessed(&mut self) {
+    pub async fn mark_as_unprocessed(&mut self) {
         self.status = AccountStatus::Unprocessed;
         self.latest_update = chrono::Utc::now().timestamp() as u64;
+        // Clear processing addresses since this account will be reprocessed
+        self.bfs_state.processing_addresses.write().await.clear();
+        // Reset completion flag since this account will be reprocessed
+        self.reset_completion_flag();
     }
 
     // Mark as BFS queue (failed during BFS)
-    pub fn mark_as_bfs_failed(&mut self) {
+    pub async fn mark_as_bfs_failed(&mut self) {
         self.status = AccountStatus::BfsQueue;
         self.latest_update = chrono::Utc::now().timestamp() as u64;
+        // Clear processing addresses since this account failed during BFS
+        self.bfs_state.processing_addresses.write().await.clear();
+        // Reset completion flag since this account failed during BFS
+        self.reset_completion_flag();
     }
 
     // Helper methods for BFS operations
@@ -180,7 +290,20 @@ impl CreatorMetadata {
         depth: usize,
         path: Vec<Pubkey>,
     ) {
-        self.bfs_state.visited_addresses.write().await.insert(address, (depth, path));
+        let mut visited = self.bfs_state.visited_addresses.write().await;
+        
+        // Check if address is already visited
+        if let Some((existing_depth, _)) = visited.get(&address) {
+            // Only update if the new depth is smaller (shorter path found)
+            // or if it's the same depth but with a different path
+            if depth <= *existing_depth {
+                visited.insert(address, (depth, path));
+            }
+            // Don't overwrite with a larger depth - this prevents circular transfer issues
+        } else {
+            // First time visiting this address
+            visited.insert(address, (depth, path));
+        }
     }
 
     pub async fn get_visited(
@@ -195,6 +318,74 @@ impl CreatorMetadata {
         address: &Pubkey,
     ) -> bool {
         self.bfs_state.visited_addresses.read().await.contains_key(address)
+    }
+
+    // Check if the queue is empty
+    pub async fn is_queue_empty(&self) -> bool {
+        self.bfs_state.queue.read().await.is_empty()
+    }
+
+    // Mark an address as currently being processed
+    pub async fn mark_processing(&self, address: Pubkey) -> bool {
+        let mut processing = self.bfs_state.processing_addresses.write().await;
+        processing.insert(address)
+    }
+
+    // Mark an address as done processing
+    pub async fn mark_done_processing(&self, address: Pubkey) -> bool {
+        let mut processing = self.bfs_state.processing_addresses.write().await;
+        processing.remove(&address)
+    }
+
+    // Check if an address is currently being processed
+    pub async fn is_processing(&self, address: &Pubkey) -> bool {
+        self.bfs_state.processing_addresses.read().await.contains(address)
+    }
+
+    // Check if an address should be skipped (either visited or currently being processed)
+    pub async fn should_skip_address(&self, address: &Pubkey) -> bool {
+        let visited = self.is_visited(address).await;
+        let processing = self.is_processing(address).await;
+        visited || processing
+    }
+
+    // Check if BFS is truly complete (no queue items AND no addresses being processed)
+    pub async fn is_bfs_complete(&self) -> bool {
+        let queue_empty = self.is_queue_empty().await;
+        let no_processing = self.bfs_state.processing_addresses.read().await.is_empty();
+        queue_empty && no_processing
+    }
+
+    // Atomically check if BFS is complete and claim the completion if it is
+    // Returns true only if this thread successfully claimed the completion
+    pub async fn try_claim_completion(&self) -> bool {
+        if self.is_bfs_complete().await {
+            // Try to atomically set completion_sent from false to true
+            // This will only succeed for the first thread that calls it
+            self.bfs_state.completion_sent.compare_exchange(
+                false, // expected value
+                true,  // new value
+                Ordering::SeqCst,
+                Ordering::SeqCst
+            ).is_ok()
+        } else {
+            false
+        }
+    }
+
+    // Check if completion has already been sent
+    pub fn is_completion_sent(&self) -> bool {
+        self.bfs_state.completion_sent.load(Ordering::SeqCst)
+    }
+
+    // Reset completion flag (for retry scenarios)
+    pub fn reset_completion_flag(&self) {
+        self.bfs_state.completion_sent.store(false, Ordering::SeqCst);
+    }
+
+    // Get count of addresses currently being processed (for debugging)
+    pub async fn get_processing_count(&self) -> usize {
+        self.bfs_state.processing_addresses.read().await.len()
     }
 }
 

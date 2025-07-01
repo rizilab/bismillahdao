@@ -53,15 +53,15 @@ impl Baseer {
                         error!("low_capacity_on_buffer::mint::{}", mint);
                         let mut creator_metadata: CreatorMetadata = token.clone().into();
                         creator_metadata.max_depth = max_depth;
-                        creator_metadata.mark_as_unprocessed();
+                        creator_metadata.mark_as_unprocessed().await;
                         if let Err(e) = db_for_buffer.redis.queue.add_unprocessed_account(&creator_metadata).await {
                             error!("failed_to_add_token_to_redis::mint::{}::error::{}", mint, e);
                         }
                     }
 
-                    if let Err(e) = sender.try_send(token.clone()) {
+                      if let Err(e) = sender.try_send(token.clone()) {
                         error!("failed_to_send_token_to_processor::mint::{}::error::{}", mint, e);
-                    }
+                      }
                   },
                   Some(message) = msg_stream.next() => {
                     if let Ok(msg) = message.get_payload::<String>() {
@@ -116,13 +116,34 @@ impl Baseer {
 
                             match make_creator_crawler_pipeline(
                                 processor.clone(),
-                                child_token,
+                                child_token.clone(),
                                 max_depth,
                                 rpc_config_clone,
-                                sender
+                                sender.clone()
                             ).await {
-                                Ok(Some(mut pipeline)) => {
-                                    if let Err(e) = pipeline.run().await {
+                                Ok(Some((mut pipeline, analyzed_account))) => {
+                                    // Run the pipeline
+                                    let pipeline_result = pipeline.run().await;
+                                    
+                                    // Mark this address as done processing
+                                    creator_metadata.mark_done_processing(analyzed_account).await;
+                                    
+                                    // After marking done, atomically check if BFS is now complete and claim completion
+                                    // This prevents race conditions with the crawler
+                                    if creator_metadata.try_claim_completion().await {
+                                        debug!("bfs_completed_after_processing::mint::{}", creator_metadata.mint);
+                                        if let Err(e) = sender.try_send(CreatorHandler::MaxDepthReached {
+                                            creator_metadata: Arc::clone(&creator_metadata),
+                                            child_token: child_token.clone(),
+                                        }) {
+                                            error!("failed_to_send_max_depth_reached_after_processing::mint::{}::error::{}", creator_metadata.mint, e);
+                                        }
+                                    }
+                                    
+                                    println!("Creator pipeline completed successfully for mint: {}", creator_metadata.mint);
+                                    
+                                    // Handle pipeline result
+                                    if let Err(e) = pipeline_result {
                                         error!("pipeline_run_failed::mint::{}::error::{}", token.mint, e);
                                         // Handle failure by adding to failed queue
                                         processor.handle_pipeline_failure().await;
@@ -132,7 +153,7 @@ impl Baseer {
                                     debug!("no_pipeline_created::mint::{}", token.mint);
                                     // Add to unprocessed queue when no pipeline is created
                                     let mut unprocessed_metadata = (*creator_metadata).clone();
-                                    unprocessed_metadata.mark_as_unprocessed();
+                                    unprocessed_metadata.mark_as_unprocessed().await;
                                     if let Err(e) = creator_handler.add_failed_account(&unprocessed_metadata).await {
                                         error!("failed_to_add_to_unprocessed_queue::mint::{}::error::{}", token.mint, e);
                                     }
@@ -219,7 +240,7 @@ impl Baseer {
 
                                     // Re-add to failed queue
                                     let mut failed_account = (*creator_metadata).clone();
-                                    failed_account.mark_as_failed();
+                                    failed_account.mark_as_failed().await;
                                     if let Err(e) = db.redis.queue.add_failed_account(&failed_account).await {
                                         error!("failed_to_requeue_failed_account::account::{}::error::{}",
                                             failed_account.address, e);
@@ -248,7 +269,7 @@ impl Baseer {
 
                                             // Mark as failed and add to failed queue
                                             let mut failed_account = (*creator_metadata).clone();
-                                            failed_account.mark_as_failed();
+                                            failed_account.mark_as_failed().await;
                                             if let Err(e) = db.redis.queue.add_failed_account(&failed_account).await {
                                                 error!("failed_to_add_to_failed_queue::account::{}::error::{}",
                                                     failed_account.address, e);
