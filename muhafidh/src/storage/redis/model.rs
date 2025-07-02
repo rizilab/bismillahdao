@@ -46,3 +46,18 @@ pub struct TokenAnalyzedCache {
     pub edge_count: usize,
     pub graph: CreatorConnectionGraph,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaxDepthReachedCache {
+    pub mint: String,
+    pub name: String,
+    pub uri: String,
+    pub dev_name: DevName,
+    pub creator: String,
+    pub bonding_curve: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub node_count: usize,
+    pub edge_count: usize,
+    pub graph: CreatorConnectionGraph,
+}

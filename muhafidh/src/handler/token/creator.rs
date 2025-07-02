@@ -8,6 +8,7 @@ use tracing::error;
 use tracing::info;
 
 use super::CreatorHandler;
+use crate::storage::redis::model::MaxDepthReachedCache;
 use crate::HandlerError;
 use crate::Result;
 use crate::config::CreatorAnalyzerConfig;
@@ -193,12 +194,15 @@ impl CreatorHandlerMetadata {
             match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config, operator_sender)
                 .await
             {
-                Ok(Some(mut pipeline)) => {
+                Ok(Some((mut pipeline, analyzed_account))) => {
                     if let Err(e) = pipeline.run().await {
                         error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
                         // Handle failure by adding to failed queue
                         processor.handle_pipeline_failure().await;
                     }
+                    
+                    // Mark this address as done processing
+                    creator_metadata.mark_done_processing(analyzed_account).await;
                 },
                 Ok(None) => {
                     debug!("no_pipeline_created_for_bfs_level::mint::{}", creator_metadata.mint);
@@ -245,12 +249,15 @@ impl CreatorHandlerMetadata {
             match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config, operator_sender)
                 .await
             {
-                Ok(Some(mut pipeline)) => {
+                Ok(Some((mut pipeline, analyzed_account))) => {
                     if let Err(e) = pipeline.run().await {
                         error!("recovery_pipeline_run_failed::mint::{}::error::{}", creator_metadata.mint, e);
                         // Handle failure by adding to failed queue
                         processor.handle_pipeline_failure().await;
                     }
+                    
+                    // Mark this address as done processing
+                    creator_metadata.mark_done_processing(analyzed_account).await;
                 },
                 Ok(None) => {
                     debug!("no_pipeline_created_for_recovery::mint::{}", creator_metadata.mint);
@@ -292,14 +299,12 @@ impl CreatorHandlerMetadata {
         }
         let dev_name = Dev::get_dev_name(creator_metadata.original_creator.clone()).unwrap_or_default();
         // Publish event
-        let event_data = TokenAnalyzedCache {
+        let event_data = MaxDepthReachedCache {
             mint: mint.to_string(),
             name: creator_metadata.token_name.clone(),
             uri: creator_metadata.token_uri.clone(),
             dev_name,
             creator: creator_metadata.original_creator.to_string(),
-            cex_name: "unknown".to_string(),
-            cex_address: Pubkey::default().to_string(),
             bonding_curve: creator_metadata.bonding_curve.unwrap_or_default().to_string(),
             created_at: creator_metadata.created_at,
             updated_at,
@@ -331,7 +336,7 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
 
                             // Add to failed queue when process_bfs_level fails
                             let mut failed_metadata = (*creator_metadata).clone();
-                            failed_metadata.mark_as_bfs_failed();
+                            failed_metadata.mark_as_bfs_failed().await;
                             if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
                                 error!("failed_to_add_to_failed_queue_after_bfs_failure::account::{}::error::{}",
                                     failed_metadata.address, e);
@@ -353,7 +358,7 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
 
                             // Add back to failed queue when recovery fails
                             let mut failed_metadata = (*creator_metadata).clone();
-                            failed_metadata.mark_as_failed();
+                            failed_metadata.mark_as_failed().await;
                             if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
                                 error!("failed_to_requeue_failed_account_after_recovery_failure::account::{}::error::{}",
                                     failed_metadata.address, e);
@@ -533,28 +538,88 @@ impl CreatorHandlerOperator {
         // Check if receiver was already visited and update BFS state
         if let Some((depth, mut neighbors)) = creator_metadata.get_visited(&receiver).await {
             neighbors.insert(0, sender);
-            creator_metadata.mark_visited(sender, depth + 1, neighbors.clone()).await;
-            creator_metadata.push_to_queue((sender, depth + 1, neighbors)).await;
-        }
-
-        wallet_connection.add_node(sender, false).await;
-        wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
-
-        // start the pipeline
-        if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
-            creator_metadata,
-            sender,
-            child_token,
-            creator_analyzer_config,
-        }) {
-            error!(
-                "failed_to_send_process_sender_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}",
-                sender, receiver, amount, timestamp, e
-            );
-            return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
-                "Failed to send process sender request: {}",
-                e
-            ))));
+            
+            // Check if sender should be skipped (visited or currently being processed)
+            if creator_metadata.should_skip_address(&sender).await {
+                debug!("skipping_sender_already_processed::sender::{}::receiver::{}::depth::{}", 
+                    sender, receiver, depth);
+                // Update receiver's neighbors but don't process sender
+                creator_metadata.mark_visited(receiver, depth, neighbors).await;
+                return Ok(());
+            }
+            
+            // Sender not visited yet, calculate depth and add to BFS
+            let sender_depth = depth + 1;
+            let max_depth = creator_metadata.max_depth;
+            
+            // Check max depth before adding to queue
+            if sender_depth > max_depth {
+                debug!("sender_exceeds_max_depth::sender::{}::depth::{}::max_depth::{}", 
+                    sender, sender_depth, max_depth);
+                return Ok(());
+            }
+            
+            creator_metadata.mark_visited(sender, sender_depth, neighbors.clone()).await;
+            creator_metadata.push_to_queue((sender, sender_depth, neighbors)).await;
+            creator_metadata.add_to_history(sender).await;
+            
+            // Add to wallet graph
+            wallet_connection.add_node(sender, false).await;
+            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
+            
+            // Start the pipeline
+            if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
+                creator_metadata,
+                sender,
+                child_token,
+                creator_analyzer_config,
+            }) {
+                error!(
+                    "failed_to_send_process_sender_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}",
+                    sender, receiver, amount, timestamp, e
+                );
+                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                    "Failed to send process sender request: {}",
+                    e
+                ))));
+            }
+            
+            info!("added_sender_to_bfs_queue::sender::{}::depth::{}", sender, sender_depth);
+        } else {
+            // Receiver not visited - check if sender should be skipped
+            if creator_metadata.should_skip_address(&sender).await {
+                debug!("skipping_sender_already_processed::sender::{}::receiver::{}", 
+                    sender, receiver);
+                return Ok(());
+            }
+            
+            // First time seeing this transfer path - start from sender
+            creator_metadata.mark_visited(sender, 1, vec![sender]).await;
+            creator_metadata.push_to_queue((sender, 1, vec![sender])).await;
+            creator_metadata.add_to_history(sender).await;
+            
+            // Add to wallet graph
+            wallet_connection.add_node(sender, false).await;
+            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
+            
+            // Start the pipeline
+            if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
+                creator_metadata: creator_metadata.clone(),
+                sender,
+                child_token: child_token.clone(),
+                creator_analyzer_config,
+            }) {
+                error!(
+                    "failed_to_send_process_sender_request::sender::{}::receiver::{}::error::{}",
+                    sender, receiver, e
+                );
+                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                    "Failed to send process sender request: {}",
+                    e
+                ))));
+            }
+            
+            info!("added_sender_as_new_transfer::sender::{}", sender);
         }
 
         Ok(())
