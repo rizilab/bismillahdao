@@ -1,32 +1,390 @@
+# Muhafidh Testing Justfile
+# Comprehensive testing commands for the Solana blockchain analyzer
+
+# Default recipe - show available commands
 default:
-  @just --list
+    @just --list
+
+# =============================================================================
+# TEST ENVIRONMENT SETUP
+# =============================================================================
+
+# Setup test environment with all dependencies
+setup:
+    @echo "🔧 Setting up test environment..."
+    cargo check --tests
+    cargo check --benches
+    @echo "✅ Test environment ready"
+
+# Clean all test artifacts and caches
+clean:
+    @echo "🧹 Cleaning test artifacts..."
+    cargo clean
+    rm -rf target/criterion
+    rm -rf test-results/
+    mkdir -p test-results
+    @echo "✅ Test artifacts cleaned"
+
+# Setup test databases using Docker Compose
+test-db-up:
+    @echo "🐳 Starting test databases..."
+    cd docker/compose/database && docker-compose -f database.dev.yaml up -d bismillahdao-redis bismillahdao-timescaledb
+    @echo "⏳ Waiting for databases to be ready..."
+    sleep 10
+    @echo "✅ Test databases ready"
+
+# Stop test databases
+test-db-down:
+    @echo "🛑 Stopping test databases..."
+    cd docker/compose/database && docker-compose -f database.dev.yaml down
+    @echo "✅ Test databases stopped"
+
+# Reset test databases
+test-db-reset: test-db-down test-db-up
+
+# =============================================================================
+# UNIT TESTS
+# =============================================================================
+
+# Run all unit tests
+test:
+    @echo "🧪 Running unit tests..."
+    RUST_LOG=debug cargo test --lib --bins --tests -- --nocapture
+
+# Run unit tests with coverage
+test-coverage:
+    @echo "📊 Running unit tests with coverage..."
+    cargo llvm-cov --lib --bins --tests --lcov --output-path test-results/coverage.lcov
+    cargo llvm-cov report --html --output-dir test-results/coverage-html
+    @echo "📈 Coverage report generated in test-results/coverage-html/"
+
+# Run unit tests for specific module
+test-module MODULE:
+    @echo "🧪 Running tests for module: {{MODULE}}"
+    RUST_LOG=debug cargo test --lib {{MODULE}} -- --nocapture
+
+# Run tests with specific pattern
+test-pattern PATTERN:
+    @echo "🔍 Running tests matching pattern: {{PATTERN}}"
+    RUST_LOG=debug cargo test {{PATTERN}} -- --nocapture
+
+# =============================================================================
+# INTEGRATION TESTS
+# =============================================================================
+
+# Run all integration tests (requires Docker)
+test-integration: test-db-up
+    @echo "🔗 Running integration tests..."
+    RUST_LOG=debug cargo test --test '*' -- --nocapture --test-threads=1
+    @echo "✅ Integration tests completed"
+
+# Run integration tests for specific component
+test-integration-component COMPONENT: test-db-up
+    @echo "🔗 Running integration tests for: {{COMPONENT}}"
+    RUST_LOG=debug cargo test --test '*{{COMPONENT}}*' -- --nocapture --test-threads=1
+
+# Run integration tests with real database containers
+test-integration-containers:
+    @echo "🐳 Running integration tests with testcontainers..."
+    RUST_LOG=debug cargo test --test integration_database --test integration_redis -- --nocapture
+
+# =============================================================================
+# CONCURRENCY & RACE CONDITION TESTS
+# =============================================================================
+
+# Run concurrency tests to detect race conditions
+test-concurrency:
+    @echo "⚡ Running concurrency tests..."
+    RUST_LOG=debug cargo test --test '*concurrency*' -- --nocapture --test-threads=1
+
+# Run BFS race condition tests specifically
+test-bfs-race:
+    @echo "🔄 Running BFS race condition tests..."
+    RUST_LOG=debug cargo test bfs_race --test '*' -- --nocapture --exact
+
+# Run stress tests for concurrent operations
+test-stress:
+    @echo "💪 Running stress tests..."
+    RUST_LOG=warn cargo test --release stress -- --nocapture --test-threads=1
+
+# =============================================================================
+# PROPERTY TESTS
+# =============================================================================
+
+# Run property-based tests
+test-property:
+    @echo "🎲 Running property-based tests..."
+    RUST_LOG=debug cargo test --test '*property*' -- --nocapture
+
+# Run property tests with more cases
+test-property-extended:
+    @echo "🎲 Running extended property tests..."
+    PROPTEST_CASES=10000 RUST_LOG=debug cargo test --test '*property*' -- --nocapture
+
+# =============================================================================
+# PERFORMANCE & BENCHMARKS
+# =============================================================================
+
+# Run benchmarks
+bench:
+    @echo "🏃 Running benchmarks..."
+    cargo bench --benches
+    @echo "📊 Benchmark results in target/criterion/"
+
+# Run specific benchmark
+bench-component COMPONENT:
+    @echo "🏃 Running benchmark for: {{COMPONENT}}"
+    cargo bench --bench {{COMPONENT}}
+
+# Run benchmarks and generate HTML report
+bench-report:
+    @echo "🏃 Running benchmarks with HTML report..."
+    cargo bench --benches
+    @echo "📊 HTML report available in target/criterion/report/index.html"
+
+# Profile benchmark performance
+bench-profile:
+    @echo "🔍 Profiling benchmark performance..."
+    cargo bench --bench '*' -- --profile-time=30
+
+# =============================================================================
+# SPECIALIZED TESTS
+# =============================================================================
+
+# Run serialization/deserialization tests
+test-serde:
+    @echo "📦 Running serialization tests..."
+    RUST_LOG=debug cargo test serde --lib -- --nocapture
+
+# Run error handling tests
+test-errors:
+    @echo "❌ Running error handling tests..."
+    RUST_LOG=debug cargo test error --lib --tests -- --nocapture
+
+# Run timeout and retry logic tests
+test-resilience:
+    @echo "🛡️ Running resilience tests..."
+    RUST_LOG=debug cargo test timeout --test '*' -- --nocapture
+    RUST_LOG=debug cargo test retry --test '*' -- --nocapture
+
+# Test circular transfer detection
+test-circular:
+    @echo "🔄 Running circular transfer tests..."
+    RUST_LOG=debug cargo test circular --lib --tests -- --nocapture
+
+# =============================================================================
+# MOCK TESTS
+# =============================================================================
+
+# Run tests with mocked dependencies
+test-mocks:
+    @echo "🎭 Running mock tests..."
+    RUST_LOG=debug cargo test mock --lib --tests -- --nocapture
+
+# Run RPC mock tests
+test-rpc-mocks:
+    @echo "🌐 Running RPC mock tests..."
+    RUST_LOG=debug cargo test rpc_mock --tests -- --nocapture
+
+# =============================================================================
+# COMPREHENSIVE TEST SUITES
+# =============================================================================
+
+# Run all tests (comprehensive suite)
+test-all: setup test-db-up
+    @echo "🚀 Running comprehensive test suite..."
+    @just test
+    @just test-integration
+    @just test-concurrency
+    @just test-property
+    @just test-mocks
+    @echo "✅ All tests completed successfully!"
+
+# Run critical path tests (fast subset)
+test-critical:
+    @echo "⚡ Running critical path tests..."
+    RUST_LOG=warn cargo test --lib critical -- --nocapture
+    RUST_LOG=warn cargo test --lib bfs -- --nocapture
+    RUST_LOG=warn cargo test --lib creator -- --nocapture
+
+# Run tests for CI/CD pipeline
+test-ci: setup
+    @echo "🔄 Running CI/CD test suite..."
+    cargo test --lib --bins --tests --workspace --verbose
+    @echo "✅ CI tests completed"
+
+# =============================================================================
+# DEBUGGING & DEVELOPMENT
+# =============================================================================
+
+# Run tests with verbose debugging
+test-debug:
+    @echo "🐛 Running tests with verbose debugging..."
+    RUST_LOG=trace cargo test --lib --tests -- --nocapture --show-output
+
+# Run failing tests only
+test-failing:
+    @echo "❌ Running only failing tests..."
+    cargo test --lib --tests -- --nocapture --skip-success
+
+# Run tests and show backtrace on failure
+test-backtrace:
+    @echo "📍 Running tests with backtrace..."
+    RUST_BACKTRACE=1 RUST_LOG=debug cargo test --lib --tests -- --nocapture
+
+# Run single test with maximum debugging
+test-single TEST:
+    @echo "🔍 Running single test with full debugging: {{TEST}}"
+    RUST_BACKTRACE=full RUST_LOG=trace cargo test {{TEST}} -- --nocapture --exact
+
+# =============================================================================
+# DOCUMENTATION TESTS
+# =============================================================================
+
+# Run documentation tests
+test-docs:
+    @echo "📚 Running documentation tests..."
+    cargo test --doc
+
+# =============================================================================
+# CLEANUP & MAINTENANCE
+# =============================================================================
+
+# Clean up test databases and containers
+test-cleanup: test-db-down
+    @echo "🧹 Cleaning up test environment..."
+    docker system prune -f --volumes
+    rm -rf test-results/tmp
+    @echo "✅ Test cleanup completed"
+
+# Generate test report summary
+test-report:
+    @echo "📋 Generating test report..."
+    @echo "=== TEST REPORT ===" > test-results/summary.txt
+    @echo "Generated at: $(date)" >> test-results/summary.txt
+    @echo "" >> test-results/summary.txt
+    cargo test --lib --tests 2>&1 | grep -E "(test result:|running)" >> test-results/summary.txt || true
+    @echo "📄 Test report saved to test-results/summary.txt"
+
+# Watch tests for continuous development
+test-watch:
+    @echo "👀 Watching for changes and running tests..."
+    cargo watch -x 'test --lib --tests -- --nocapture'
+
+# =============================================================================
+# PERFORMANCE MONITORING
+# =============================================================================
+
+# Monitor test performance
+test-perf:
+    @echo "⏱️ Monitoring test performance..."
+    time cargo test --lib --release -- --nocapture
+    @echo "📊 Performance monitoring completed"
+
+# Run memory usage tests
+test-memory:
+    @echo "🧠 Running memory usage tests..."
+    cargo test --release --lib memory -- --nocapture
+
+# =============================================================================
+# EXAMPLES & RECIPES
+# =============================================================================
+
+# Example: Run tests for creator metadata module
+example-creator-tests:
+    @just test-module "creator::metadata"
+
+# Example: Run integration tests for Redis
+example-redis-integration:
+    @just test-integration-component redis
+
+# Example: Debug BFS circular transfer issue
+example-debug-circular:
+    @just test-single "test_circular_transfer_detection"
+
+# Example: Full development workflow
+example-dev-workflow: clean setup test-critical test-integration-containers bench-component
+
+# =============================================================================
+# HELP & INFO
+# =============================================================================
+
+# Show test environment information
+info:
+    @echo "🔍 Test Environment Information:"
+    @echo "Rust Version: $(rustc --version)"
+    @echo "Cargo Version: $(cargo --version)"
+    @echo "Available Tests:"
+    @cargo test --list | head -20
+    @echo "Docker Status:"
+    @docker --version || echo "Docker not available"
+    @echo ""
+    @echo "📁 Test Directories:"
+    @find . -name "*test*" -type d | head -10
+
+# Show testing best practices
+best-practices:
+    @echo "📖 Testing Best Practices for Muhafidh:"
+    @echo ""
+    @echo "1. 🧪 Unit Tests: Test individual components in isolation"
+    @echo "   just test-module creator"
+    @echo ""
+    @echo "2. 🔗 Integration Tests: Test component interactions"
+    @echo "   just test-integration"
+    @echo ""
+    @echo "3. ⚡ Concurrency Tests: Detect race conditions"
+    @echo "   just test-concurrency"
+    @echo ""
+    @echo "4. 🎲 Property Tests: Test with generated inputs"
+    @echo "   just test-property"
+    @echo ""
+    @echo "5. 🏃 Benchmarks: Monitor performance"
+    @echo "   just bench"
+    @echo ""
+    @echo "6. 🐛 Debug Single Test:"
+    @echo "   just test-single test_name"
+
+# =============================================================================
+# APPLICATION COMMANDS
+# =============================================================================
 
 # Run the PumpFun token raqib with WebSocket (default)
 run-raqib:
-  cargo run --release --bin raqib
+    cargo run --release --bin raqib
 
 # Build the PumpFun raqib
 build-raqib:
-  cargo build --bin raqib
+    cargo build --bin raqib
 
 # Build a release version
 release-raqib:
-  cargo build --release --bin raqib
+    cargo build --release --bin raqib
 
-# Run tests
+# Run tests for raqib binary
 test-raqib:
-  cargo test --bin raqib
-  
+    cargo test --bin raqib
+   
+# Run baseer engine
 run-baseer:
-  cargo run --release --bin baseer
-  
+    cargo run --release --bin baseer
+   
+# Run database migrations
 run-migrate:
-  cargo run --release --bin migrate
-
-# Clean the build artifacts
-clean:
-  cargo clean
+    cargo run --release --bin migrate
 
 # Check the code for errors
 check:
-  cargo check
+    cargo check
+
+# =============================================================================
+# DEVELOPMENT WORKFLOW SHORTCUTS
+# =============================================================================
+
+# Quick development cycle: clean, test critical paths, run
+dev: clean test-critical run-raqib
+
+# Pre-commit checks: format, lint, test
+pre-commit: check test-critical test-docs
+
+# Full development workflow with testing
+full-dev: clean setup test-all bench-report

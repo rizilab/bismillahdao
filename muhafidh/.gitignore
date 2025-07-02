@@ -4,6 +4,12 @@ dist/
 node_modules/
 diff
 
+# Test results and artifacts
+test-results/
+coverage-html/
+*.profraw
+*.profdata
+
 # Environment files
 .env
 .env.prod
