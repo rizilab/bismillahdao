@@ -38,10 +38,10 @@ tracing-appender = "0.2.2"
 # Database
 bb8 = "0.9.0"
 bb8-postgres = "0.9.0"
-bb8-redis = "0.23.0"
+bb8-redis = "0.24.0"
 tokio-postgres = { version = "0.7.13", features = ["with-chrono-0_4"] }
 postgres-native-tls = "0.5.1"
-redis = { version = "0.31.0", features = ["aio","tokio-comp"] }
+redis = { version = "0.32.3", features = ["aio","tokio-comp"] }
 
 # Solana
 solana-account = "2.1.6"
@@ -59,9 +59,9 @@ solana-sdk = "2.1.16"
 solana-transaction-status = "2.1.16"
 solana-signature = "2.1.16"
 solana-pubsub-client = "2.1.16"
-spl-memo = "5.0.0"
+spl-memo = "6.0.0"
 mpl-token-metadata = "5.1.0"
-spl-token = "6.0.0"
+spl-token = "8.0.0"
 
 # carbon
 carbon-core = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
@@ -77,16 +77,41 @@ carbon-rpc-transaction-crawler-datasource = { git = "https://github.com/sevenlab
 
 # geyser
 carbon-yellowstone-grpc-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-yellowstone-grpc-client = { version = "5.0.0" }
-yellowstone-grpc-proto = { version = "5.0.0" }
+yellowstone-grpc-client = { version = "6.1.0" }
+yellowstone-grpc-proto = { version = "6.1.0" }
 
 # SSL/TLS
 openssl = { version = "0.10" }
 native-tls = { version = "0.2" }
 
 [features]
-default = ["prod", "discord_trace"]
+default = ["prod"]
 dev = []
 prod = []
 deep-trace = []
 discord_trace = []
+
+[dev-dependencies]
+tokio-test = "0.4.4"
+mockall = "0.13.0"
+wiremock = "0.6.2"
+testcontainers = "0.24.0"
+testcontainers-modules = { version = "0.12.1", features = ["redis", "postgres"] }
+proptest = "1.5.0"
+criterion = { version = "0.6.0", features = ["html_reports"] }
+serial_test = "3.1.1"
+temp-env = "0.3.6"
+fake = { version = "4.3.0", features = ["derive", "chrono", "uuid"] }
+rstest = "0.25.0"
+pretty_assertions = "1.4.1"
+tokio-stream = { version = "0.1.16", features = ["test-util"] }
+test-log = { version = "0.2.16", features = ["trace"] }
+env_logger = "0.11.5"
+
+[[bench]]
+name = "bfs_performance"
+harness = false
+
+[[bench]]
+name = "pipeline_throughput"
+harness = false
