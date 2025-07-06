@@ -16,7 +16,7 @@ use futures::StreamExt;
 use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
 use solana_client::rpc_config::RpcTransactionConfig;
 use solana_pubkey::Pubkey;
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_commitment_config::CommitmentConfig;
 use solana_signature::Signature;
 use solana_transaction_status::EncodedConfirmedTransactionWithStatusMeta;
 use solana_transaction_status::UiLoadedAddresses;
@@ -59,7 +59,7 @@ impl Filters {
 
 pub struct RpcTransactionAnalyzer {
     pub rpc_config: Arc<RpcConfig>,
-    pub account: Pubkey,
+    pub analyzed_account: Pubkey,
     pub filters: Filters,
     pub commitment: Option<CommitmentConfig>,
     pub config: Arc<CreatorAnalyzerConfig>,
@@ -68,14 +68,14 @@ pub struct RpcTransactionAnalyzer {
 impl RpcTransactionAnalyzer {
     pub fn new(
         rpc_config: Arc<RpcConfig>,
-        account: Pubkey,
+        analyzed_account: Pubkey,
         filters: Filters,
         commitment: Option<CommitmentConfig>,
         config: Arc<CreatorAnalyzerConfig>,
     ) -> Self {
         Self {
             rpc_config,
-            account,
+            analyzed_account,
             filters,
             commitment,
             config,
@@ -87,12 +87,12 @@ impl RpcTransactionAnalyzer {
 impl Datasource for RpcTransactionAnalyzer {
     async fn consume(
         &self,
-        sender: &Sender<Update>,
+        sender: Sender<Update>,
         cancellation_token: CancellationToken,
         metrics: Arc<MetricsCollection>,
     ) -> CarbonResult<()> {
         let rpc_config = self.rpc_config.clone();
-        let account = self.account;
+        let analyzed_account = self.analyzed_account;
         let filters = self.filters.clone();
         let sender = sender.clone();
         let commitment = self.commitment;
@@ -104,7 +104,7 @@ impl Datasource for RpcTransactionAnalyzer {
 
         let signature_fetcher = signature_fetcher(
             rpc_config.clone(),
-            account,
+            analyzed_account,
             signature_sender,
             filters.clone(),
             commitment,
@@ -149,7 +149,7 @@ impl Datasource for RpcTransactionAnalyzer {
 
 fn signature_fetcher(
     rpc_config: Arc<RpcConfig>,
-    account: Pubkey,
+    analyzed_account: Pubkey,
     signature_sender: Sender<Signature>,
     filters: Filters,
     commitment: Option<CommitmentConfig>,
@@ -169,7 +169,7 @@ fn signature_fetcher(
         'outer: for iteration in 0..max_iterations {
             if all_signatures.len() >= 5000 {
                 debug!("signature_limit_reached::account::{}::total::{}", 
-                    account, all_signatures.len());
+                    analyzed_account, all_signatures.len());
                 break;
             }
 
@@ -188,11 +188,9 @@ fn signature_fetcher(
                             &RpcProviderRole::SignatureFetcher,
                             commitment_config
                         ).await {
-                            debug!("fetching_signatures::provider::{}::account::{}::iteration::{}::before::{:?}", 
-                                provider_name, account, iteration + 1, current_before_signature);
 
                             match client
-                                .get_signatures_for_address_with_config(&account, GetConfirmedSignaturesForAddress2Config {
+                                .get_signatures_for_address_with_config(&analyzed_account, GetConfirmedSignaturesForAddress2Config {
                                     before:     current_before_signature,
                                     until:      until_signature,
                                     limit:      None,
@@ -202,15 +200,10 @@ fn signature_fetcher(
                             {
                                 Ok(signatures) => {
                                     if signatures.is_empty() {
-                                        debug!("no_more_signatures_found::account::{}::total_collected::{}", 
-                                            account, all_signatures.len());
                                         break 'outer; // Exit both loops
                                     }
 
                                     let signatures_in_batch = signatures.len();
-                                    debug!("fetched_signatures_batch::count::{}::provider::{}::iteration::{}", 
-                                        signatures_in_batch, provider_name, iteration + 1);
-
                                     // Collect signatures from this batch
                                     let mut last_signature = None;
                                     for sig_info in signatures.iter() {
@@ -230,8 +223,8 @@ fn signature_fetcher(
                                         all_signatures.push(signature);
                                     }
 
-                                    debug!("batch_collected::iteration::{}::batch_size::{}::total_collected::{}", 
-                                        iteration + 1, signatures_in_batch, all_signatures.len());
+                                    // debug!("batch_collected::iteration::{}::batch_size::{}::total_collected::{}", 
+                                    //     iteration + 1, signatures_in_batch, all_signatures.len());
 
                                     // If batch was full (1000) and we have room for more, continue to next iteration
                                     if signatures_in_batch >= 1000 && all_signatures.len() < 5000 {
@@ -246,11 +239,11 @@ fn signature_fetcher(
                                 }
                                 Err(e) => {
                                     error!("error_fetching_signatures::provider::{}::account::{}::error::{}", 
-                                        provider_name, account, e);
+                                        provider_name, analyzed_account, e);
 
                                     retry_count += 1;
                                     if retry_count >= max_retries {
-                                        error!("max_retries_reached_for_signatures::account::{}", account);
+                                        error!("max_retries_reached_for_signatures::account::{}", analyzed_account);
                                         break 'outer;
                                     }
 
@@ -265,18 +258,18 @@ fn signature_fetcher(
                                         "retrying_signature_fetch_after_backoff::attempt::{}::delay_ms::{}::account::{}",
                                         retry_count,
                                         backoff_delay.as_millis(),
-                                        account
+                                        analyzed_account
                                     );
 
                                     tokio::time::sleep(backoff_delay).await;
                                 }
                             }
                         } else {
-                            error!("no_signature_fetcher_providers_available::account::{}", account);
+                            error!("no_signature_fetcher_providers_available::account::{}", analyzed_account);
 
                             retry_count += 1;
                             if retry_count >= max_retries {
-                                error!("max_retries_reached_no_providers::account::{}", account);
+                                error!("max_retries_reached_no_providers::account::{}", analyzed_account);
                                 break 'outer;
                             }
 
@@ -291,7 +284,7 @@ fn signature_fetcher(
                                 "no_providers_available::retrying_after_backoff::attempt::{}::delay_ms::{}::account::{}",
                                 retry_count,
                                 backoff_delay.as_millis(),
-                                account
+                                analyzed_account
                             );
 
                             tokio::time::sleep(backoff_delay).await;
@@ -302,15 +295,12 @@ fn signature_fetcher(
         }
 
         if all_signatures.is_empty() {
-            debug!("no_signatures_collected::account::{}", account);
+            debug!("no_signatures_collected::account::{}", analyzed_account);
             return;
         }
 
         // Reverse to get oldest signatures first
         all_signatures.reverse();
-        
-        debug!("signatures_reversed::account::{}::total::{}::sending_oldest_first", 
-            account, all_signatures.len());
 
         // Record metrics for total signatures fetched
         let start = Instant::now();
@@ -329,17 +319,17 @@ fn signature_fetcher(
         for (idx, signature) in all_signatures.into_iter().take(signatures_to_send).enumerate() {
             // Check if we're cancelled before sending each signature
             if cancellation_token.is_cancelled() {
-                debug!("cancellation_detected_during_signature_sending");
+                // debug!("cancellation_detected_during_signature_sending");
                 return;
             }
 
             if let Err(e) = signature_sender.try_send(signature) {
-                debug!("signature_channel_closed_at_index::{}::likely_cancelled::error::{:?}", idx, e);
+                // debug!("signature_channel_closed_at_index::{}::likely_cancelled::error::{:?}", idx, e);
                 return;
             }
         }
 
-        debug!("all_signatures_sent::account::{}::count::{}", account, signatures_to_send);
+        // debug!("all_signatures_sent::account::{}::count::{}", analyzed_account, signatures_to_send);
     })
 }
 
@@ -382,8 +372,6 @@ fn transaction_fetcher(
                                 .get_next_client_for_role(&RpcProviderRole::TransactionFetcher, commitment_config)
                                 .await
                             {
-                                debug!("fetching_transaction::provider::{}::signature::{}", provider_name, signature);
-
                                 match client
                                     .get_transaction_with_config(&signature, RpcTransactionConfig {
                                         encoding: Some(UiTransactionEncoding::Base64),
@@ -456,7 +444,7 @@ fn transaction_fetcher(
                             }
                         }
 
-                        error!("all_retries_failed_for_transaction::signature::{}", signature);
+                        debug!("all_retries_failed_for_transaction::signature::{}", signature);
                         None
                     }
                 })
@@ -525,7 +513,7 @@ fn task_processor(
 
                           // Decode transaction
                     let Some(decoded_transaction) = transaction.transaction.decode() else {
-                              error!("failed_to_decode_transaction::signature::{}", signature);
+                        error!("failed_to_decode_transaction::signature::{}", signature);
                         continue;
                     };
 
@@ -574,7 +562,6 @@ fn task_processor(
                         continue;
                     };
 
-                          // Create update
                     let update = Update::Transaction(Box::new(TransactionUpdate {
                         signature,
                         transaction: decoded_transaction.clone(),
@@ -582,6 +569,7 @@ fn task_processor(
                         is_vote: false,
                         slot: fetched_transaction.slot,
                         block_time: fetched_transaction.block_time,
+                        block_hash: None,
                     }));
 
                     let elapsed = start.elapsed();

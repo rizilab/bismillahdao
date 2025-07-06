@@ -79,7 +79,7 @@ impl GraphDb {
         for node in &nodes {
             // Use reference to avoid moving the Vec
             let sanitized_cex_name = if node.is_cex {
-                match crate::model::cex::Cex::get_exchange_name(node.address) {
+                match crate::model::cex::Cex::get_exchange_name(node.detail.address) {
                     Some(name) => Some(Self::sanitize_utf8(&name.to_string())),
                     None => None,
                 }
@@ -91,7 +91,7 @@ impl GraphDb {
                 "INSERT INTO wallet_nodes (pubkey, is_cex, cex_name) VALUES ($1, $2, $3)
          ON CONFLICT (pubkey) DO UPDATE SET is_cex = EXCLUDED.is_cex,
            cex_name = EXCLUDED.cex_name",
-                &[&node.address.to_string(), &node.is_cex, &sanitized_cex_name],
+                &[&node.detail.address.to_string(), &node.is_cex, &sanitized_cex_name],
             )
             .await
             .map_err(|e| {
@@ -157,7 +157,7 @@ impl GraphDb {
             err_with_loc!(PostgresClientError::TransactionError(format!("failed_to_commit_transaction: {}", e)))
         })?;
 
-        debug!("Stored connection graph for mint {} with {} nodes and {} edges", mint, node_count, edge_count);
+        // debug!("Stored connection graph for mint {} with {} nodes and {} edges", mint, node_count, edge_count);
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
-use solana_sdk::pubkey;
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
+use solana_pubkey::pubkey;
 
 /// ======================= CEX wallet =======================
 pub const COINBASE_HW_1: Pubkey = pubkey!("FpwQQhQQoEaVu3WU2qZMfF1hx48YyfwsLoRgXG83E99Q");

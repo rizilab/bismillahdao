@@ -2,19 +2,35 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use petgraph::Graph;
-use petgraph::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use solana_pubkey::Pubkey;
 use tokio::sync::RwLock;
+use solana_client::rpc_config::RpcAccountInfoConfig;
+use crate::config::RpcProviderRole;
+use solana_commitment_config::CommitmentConfig;
+use solana_account_decoder::UiAccountEncoding;
+use crate::config::RpcConfig;
+use chrono::Utc;
+use petgraph::graph::NodeIndex;
 
-use crate::model::cex::Cex;
+use crate::utils::lamports_to_sol;
+use crate::Result;
+use crate::error::HandlerError;
+use crate::err_with_loc;
+use tracing::error;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddressDetails {
+    pub address: Pubkey,
+    pub solscan_url: String,
+    pub sol_balance: f64,
+    pub last_updated: i64,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddressNode {
-    pub address: solana_pubkey::Pubkey,
-    pub total_received: f64,
-    pub total_balance: f64,
+    pub detail: AddressDetails,
     pub is_cex: bool,
 }
 
@@ -46,7 +62,7 @@ impl CreatorConnectionGraph {
         self.node_indices.clear();
         for node_index in self.graph.node_indices() {
             if let Some(node) = self.graph.node_weight(node_index) {
-                self.node_indices.insert(node.address, node_index);
+                self.node_indices.insert(node.detail.address, node_index);
             }
         }
     }
@@ -61,6 +77,7 @@ impl CreatorConnectionGraph {
     pub fn add_node(
         &mut self,
         address: Pubkey,
+        sol_balance: f64,
         is_cex: bool,
     ) -> NodeIndex {
         self.ensure_indices();
@@ -68,11 +85,17 @@ impl CreatorConnectionGraph {
         if let Some(&idx) = self.node_indices.get(&address) {
             return idx;
         }
-
-        let node = AddressNode {
+        
+        let solscan_url = format!("https://solscan.io/account/{}", address);
+        let last_updated = Utc::now().timestamp_millis();
+        let detail = AddressDetails {
             address,
-            total_received: 0.0,
-            total_balance: 0.0,
+            solscan_url,
+            sol_balance,
+            last_updated,
+        };
+        let node = AddressNode {
+            detail,
             is_cex,
         };
 
@@ -84,22 +107,21 @@ impl CreatorConnectionGraph {
 
     pub fn add_edge(
         &mut self,
-        from: Pubkey,
-        to: Pubkey,
+        from: NodeIndex,
+        to: NodeIndex,
         amount: f64,
         timestamp: i64,
     ) {
-        let from_idx = self.add_node(from, Cex::get_exchange_name(from).is_some());
-        let to_idx = self.add_node(to, Cex::get_exchange_name(to).is_some());
-
+        let sender = self.graph.node_weight(from).unwrap();
+        let receiver = self.graph.node_weight(to).unwrap();
         let edge = TransactionEdge {
-            from,
-            to,
+            from: sender.detail.address,
+            to: receiver.detail.address,
             amount,
             timestamp,
         };
 
-        self.graph.add_edge(from_idx, to_idx, edge);
+        self.graph.add_edge(from, to, edge);
     }
 
     pub fn get_node_count(&self) -> usize {
@@ -118,6 +140,51 @@ impl CreatorConnectionGraph {
     // Get all edges in the graph
     pub fn get_edges(&self) -> Vec<TransactionEdge> {
         self.graph.edge_weights().map(|edge| edge.clone()).collect()
+    }
+
+    pub fn get_node_by_address(&self, address: Pubkey) -> Option<AddressNode> {
+        self.node_indices.get(&address).and_then(|idx| self.graph.node_weight(*idx).cloned())
+    }
+
+    pub fn get_edge_by_addresses(&self, from: Pubkey, to: Pubkey) -> Option<TransactionEdge> {
+        self.graph.find_edge(self.node_indices[&from], self.node_indices[&to]).and_then(|edge_idx| self.graph.edge_weight(edge_idx).cloned())
+    }
+    
+    pub async fn update_node_balance(&mut self, rpc_config: Arc<RpcConfig>) -> Result<()> {
+        let rpc_config = rpc_config.clone();
+        let pubkeys = self.graph.node_weights().map(|node| node.detail.address).collect::<Vec<Pubkey>>();
+        let commitment_config = CommitmentConfig::processed();
+        
+        if let Some((client, _)) = rpc_config.get_next_client_for_role(
+            &RpcProviderRole::TransactionFetcher,
+            commitment_config
+        ).await { 
+            let config = RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::JsonParsed),
+                commitment: Some(commitment_config),
+                .. RpcAccountInfoConfig::default()
+            };
+            
+            match client.get_multiple_accounts_with_config(&pubkeys, config).await {
+                Ok(result) => {
+                    let accounts = result.value;
+                    for (i, account) in accounts.iter().enumerate() {
+                        if let Some(acc) = account {
+                            let balance = lamports_to_sol(acc.lamports);
+                            if let Some(idx) = self.graph.node_weights().position(|node| node.detail.address == pubkeys[i]) {
+                                let node_index = NodeIndex::new(idx);
+                                self.graph.node_weight_mut(node_index).unwrap().detail.sol_balance = balance;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("failed_to_get_multiple_accounts_with_config::error::{}", e);
+                    return Err(err_with_loc!(HandlerError::GraphError(format!("failed_to_get_multiple_accounts_with_config: {}", e))));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -140,13 +207,13 @@ impl SharedCreatorConnectionGraph {
         address: Pubkey,
         is_cex: bool,
     ) -> NodeIndex {
-        self.inner.write().await.add_node(address, is_cex)
+        self.inner.write().await.add_node(address, 0.0, is_cex)
     }
 
     pub async fn add_edge(
         &self,
-        from: Pubkey,
-        to: Pubkey,
+        from: NodeIndex,
+        to: NodeIndex,
         amount: f64,
         timestamp: i64,
     ) {

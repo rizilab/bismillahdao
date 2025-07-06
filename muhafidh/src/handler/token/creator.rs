@@ -3,13 +3,13 @@ use std::sync::Arc;
 use solana_pubkey::Pubkey;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
 
 use super::CreatorHandler;
 use crate::storage::redis::model::MaxDepthReachedCache;
-use crate::HandlerError;
 use crate::Result;
 use crate::config::CreatorAnalyzerConfig;
 use crate::config::RpcConfig;
@@ -23,6 +23,7 @@ use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
 use crate::storage::StorageEngine;
 use crate::storage::redis::model::TokenAnalyzedCache;
+use crate::error::HandlerError;
 
 pub struct CreatorHandlerMetadata {
     receiver: mpsc::Receiver<CreatorHandler>,
@@ -64,8 +65,11 @@ impl CreatorHandlerMetadata {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let connection_graph = connection_graph.clone_graph().await;
-
+        let mut connection_graph = connection_graph.clone_graph().await;
+        // TODO: too long to update node balance
+        // if let Err(e) = connection_graph.update_node_balance(self.rpc_config.clone()).await {
+        //     error!("update_connection_graph_failed::mint::{}::error::{}", mint.clone(), e);
+        // }
         // Update in PostgreSQL
         self.db
             .postgres
@@ -82,19 +86,14 @@ impl CreatorHandlerMetadata {
             .await
         {
             error!("record_cex_activity_postgres_failed::{}::mint::{}::error::{}", cex.name, mint, e);
-            // Continue despite the error
-        } else {
-            debug!("record_cex_activity_postgres_success::{}::mint::{}", cex.name, mint);
         }
 
         // Store the connection graph in pgrouting
         if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
             error!("store_connection_graph_pgrouting_failed::{}::mint::{}::error::{}", cex.name, mint, e);
             // Continue despite the error
-        } else {
-            debug!("store_connection_graph_pgrouting_success::{}::mint::{}", cex.name, mint);
-        }
-
+        } 
+        
         // Update Redis cache
         let token_key = mint.to_string();
         if let Ok(Some(mut token_metadata)) =
@@ -105,8 +104,6 @@ impl CreatorHandlerMetadata {
 
             if let Err(e) = self.db.redis.kv.set(&token_key, &token_metadata).await {
                 error!("update_token_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
-            } else {
-                debug!("update_token_redis_success::{}::mint::{}", cex.name, mint);
             }
         }
 
@@ -114,8 +111,6 @@ impl CreatorHandlerMetadata {
         let graph_key = format!("developer_connection_graph:{}", mint);
         if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
             error!("store_connection_graph_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
-        } else {
-            debug!("store_connection_graph_redis_success::{}::mint::{}", cex.name, mint);
         }
 
         // Store CEX information in Redis for quick access
@@ -129,8 +124,6 @@ impl CreatorHandlerMetadata {
 
         if let Err(e) = self.db.redis.kv.set(&cex_key, &cex_data).await {
             error!("store_cex_data_redis_failed::{}::mint::{}::error::{}", cex.name, mint, e);
-        } else {
-            debug!("store_cex_data_redis_success::{}::mint::{}", cex.name, mint);
         }
 
         // Publish event
@@ -149,14 +142,14 @@ impl CreatorHandlerMetadata {
             edge_count: connection_graph.get_edge_count(),
             graph: connection_graph,
         };
-
+        
+        // debug!("publishing_token_cex_updated::mint::{}::cex::{}", mint, cex.name);
+        
         if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
             error!("publish_token_cex_updated_event_failed::{}::mint::{}::error::{}", cex.name, mint, e);
-        } else {
-            debug!("publish_token_cex_updated_event_success::{}::mint::{}", cex.name, mint);
         }
 
-        debug!("process_cex_connection_completed::{}::mint::{}", cex.name, mint);
+        // debug!("process_cex_connection_completed::{}::mint::{}", cex.name, mint);
         Ok(())
     }
 
@@ -166,43 +159,44 @@ impl CreatorHandlerMetadata {
         _sender: Pubkey,
         child_token: CancellationToken,
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+        depth: usize,
     ) -> Result<()> {
         let db_engine = self.db.clone();
         let shutdown_signal = self.shutdown.clone();
         let (operator_sender, operator_receiver) = mpsc::channel(1000);
-        let rpc_config = self.rpc_config.clone();
 
         let creator_handler = Arc::new(CreatorHandlerOperator::new(
             db_engine.clone(),
             shutdown_signal.clone(),
             operator_receiver,
             operator_sender.clone(),
-            rpc_config,
+            self.rpc_config.clone(),
         ));
 
         let max_depth = creator_metadata.max_depth;
+        let current_depth = depth + 1;
+        
         let processor = CreatorInstructionProcessor::new(
             creator_handler.clone(),
             creator_metadata.clone(),
             child_token.clone(),
             creator_analyzer_config.clone(),
+            self.rpc_config.clone(),
+            Arc::new(RwLock::new(current_depth)),
         );
-        let rpc_config = self.rpc_config.clone();
         let operator_sender = operator_sender.clone();
 
         tokio::spawn(async move {
-            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config, operator_sender)
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, operator_sender)
                 .await
             {
-                Ok(Some((mut pipeline, analyzed_account))) => {
+                //TODO: remove analyzed_account from here
+                Ok(Some((mut pipeline, _analyzed_account))) => {
                     if let Err(e) = pipeline.run().await {
                         error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
                         // Handle failure by adding to failed queue
                         processor.handle_pipeline_failure().await;
                     }
-                    
-                    // Mark this address as done processing
-                    creator_metadata.mark_done_processing(analyzed_account).await;
                 },
                 Ok(None) => {
                     debug!("no_pipeline_created_for_bfs_level::mint::{}", creator_metadata.mint);
@@ -222,31 +216,34 @@ impl CreatorHandlerMetadata {
         creator_metadata: Arc<CreatorMetadata>,
         child_token: CancellationToken,
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+        depth: usize,
     ) -> Result<()> {
         let db_engine = self.db.clone();
         let shutdown_signal = self.shutdown.clone();
         let (operator_sender, operator_receiver) = mpsc::channel(1000);
-        let rpc_config = self.rpc_config.clone();
 
         let creator_handler = Arc::new(CreatorHandlerOperator::new(
             db_engine.clone(),
             shutdown_signal.clone(),
             operator_receiver,
             operator_sender.clone(),
-            rpc_config,
+            self.rpc_config.clone(),
         ));
 
         let max_depth = creator_metadata.max_depth;
+        let current_depth = depth + 1;
+
         let processor = CreatorInstructionProcessor::new(
             creator_handler.clone(),
             creator_metadata.clone(),
             child_token.clone(),
             creator_analyzer_config.clone(),
+            self.rpc_config.clone(),
+            Arc::new(RwLock::new(current_depth)),
         );
-        let rpc_config = self.rpc_config.clone();
         let operator_sender = operator_sender.clone();
         tokio::spawn(async move {
-            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, rpc_config, operator_sender)
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, operator_sender)
                 .await
             {
                 Ok(Some((mut pipeline, analyzed_account))) => {
@@ -255,9 +252,6 @@ impl CreatorHandlerMetadata {
                         // Handle failure by adding to failed queue
                         processor.handle_pipeline_failure().await;
                     }
-                    
-                    // Mark this address as done processing
-                    creator_metadata.mark_done_processing(analyzed_account).await;
                 },
                 Ok(None) => {
                     debug!("no_pipeline_created_for_recovery::mint::{}", creator_metadata.mint);
@@ -276,8 +270,16 @@ impl CreatorHandlerMetadata {
         &self,
         creator_metadata: Arc<CreatorMetadata>,
     ) -> Result<()> {
-        let connection_graph = creator_metadata.wallet_connection.clone_graph().await;
+        // debug!("process_max_depth_reached::mint::{}", creator_metadata.mint);
+   
         let mint = creator_metadata.mint;
+        let mut connection_graph = creator_metadata.wallet_connection.clone_graph().await;
+        
+        // TODO: too long to update node balance
+        // if let Err(e) = connection_graph.update_node_balance(self.rpc_config.clone()).await {
+        //     error!("update_connection_graph_failed::mint::{}::error::{}", mint.clone(), e);
+        // }
+
         let updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -286,17 +288,14 @@ impl CreatorHandlerMetadata {
         // Store the connection graph in pgrouting
         if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
             error!("store_connection_graph_pgrouting_failed::mint::{}::error::{}", mint, e);
-        } else {
-            debug!("store_connection_graph_pgrouting_success::mint::{}", mint);
         }
 
         // Store connection graph in Redis
         let graph_key = format!("developer_connection_graph:{}", mint);
         if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
             error!("store_connection_graph_redis_failed::mint::{}::error::{}", mint, e);
-        } else {
-            debug!("store_connection_graph_redis_success::mint::{}", mint);
         }
+        
         let dev_name = Dev::get_dev_name(creator_metadata.original_creator.clone()).unwrap_or_default();
         // Publish event
         let event_data = MaxDepthReachedCache {
@@ -315,23 +314,20 @@ impl CreatorHandlerMetadata {
 
         if let Err(e) = self.db.redis.queue.publish("max_depth_reached", &event_data).await {
             error!("publish_max_depth_reached_event_failed::mint::{}::error::{}", mint, e);
-        } else {
-            debug!("publish_max_depth_reached_event_success::mint::{}", mint);
         }
 
         Ok(())
     }
+
 }
 
 async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandlerMetadata) {
-    debug!("creator_handler_metadata::started");
-
     loop {
         tokio::select! {
             Some(msg) = creator_handler_metadata.receiver.recv() => {
                 match msg {
-                    CreatorHandler::ProcessBfsLevel { creator_metadata, sender, child_token, creator_analyzer_config } => {
-                        if let Err(e) = creator_handler_metadata.process_bfs_level(creator_metadata.clone(), sender, child_token, creator_analyzer_config).await {
+                    CreatorHandler::ProcessBfsLevel { creator_metadata, sender, child_token, creator_analyzer_config, depth } => {
+                        if let Err(e) = creator_handler_metadata.process_bfs_level(creator_metadata.clone(), sender, child_token, creator_analyzer_config, depth).await {
                             error!("failed_to_process_sender::error::{}", e);
 
                             // Add to failed queue when process_bfs_level fails
@@ -339,7 +335,7 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             failed_metadata.mark_as_bfs_failed().await;
                             if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
                                 error!("failed_to_add_to_failed_queue_after_bfs_failure::account::{}::error::{}",
-                                    failed_metadata.address, e);
+                                    failed_metadata.get_analyzed_account().await, e);
                             }
                         }
                     },
@@ -350,9 +346,9 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             error!("cex_failed::{}::mint::{}::error::{}", cex.clone().name, mint, e);
                         }
                     },
-                    CreatorHandler::ProcessRecoveredAccount { creator_metadata, child_token, creator_analyzer_config } => {
+                    CreatorHandler::ProcessRecoveredAccount { creator_metadata, child_token, creator_analyzer_config, depth } => {
                         if let Err(e) = creator_handler_metadata.process_recovered_account(
-                            creator_metadata.clone(), child_token, creator_analyzer_config
+                            creator_metadata.clone(), child_token, creator_analyzer_config, depth
                         ).await {
                             error!("failed_to_process_recovered_account::error::{}", e);
 
@@ -361,7 +357,7 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             failed_metadata.mark_as_failed().await;
                             if let Err(e) = creator_handler_metadata.db.redis.queue.add_failed_account(&failed_metadata).await {
                                 error!("failed_to_requeue_failed_account_after_recovery_failure::account::{}::error::{}",
-                                    failed_metadata.address, e);
+                                    failed_metadata.get_analyzed_account().await, e);
                             }
                         }
                     },
@@ -370,9 +366,8 @@ async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandl
                             error!("failed_to_process_max_depth_reached::error::{}", e);
                         }
 
-                        #[cfg(feature = "dev")]
-                        debug!("max_depth_reached::mint::{}::depth::{}::cancellation_token_cancelled", creator_metadata.mint, depth);
-                        child_token.cancel();
+                        // debug!("max_depth_reached_handler_completed::mint::{}", creator_metadata.mint);
+                        // Don't cancel child_token here - it's already cancelled by the sender
                     },
                 }
             },
@@ -421,60 +416,17 @@ impl CreatorHandlerOperator {
         timestamp: i64,
         child_token: CancellationToken,
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+        depth: usize,
     ) -> Result<()> {
         let wallet_connection = creator_metadata.wallet_connection.clone();
-
-        // Get the depth of the receiver (the account being analyzed) from BFS state
-        let receiver_depth = if let Some((depth, _)) = creator_metadata.get_visited(&receiver).await {
-            depth
-        } else {
-            // If receiver is not visited yet (shouldn't happen in normal flow), use 0
-            0
-        };
-
-        // First check if this is a known developer address with associated CEX
-        if let Some(dev) = Dev::get_dev_info(creator_metadata.original_creator.clone()) {
-            let cex_name = dev.cex_name;
-            let cex_address = Cex::get_exchange_address(cex_name.clone()).unwrap_or_default();
-            let cex = Cex::new(cex_name, cex_address);
-            wallet_connection.add_node(sender, true).await;
-            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
-
-            if let Err(e) = self.sender.try_send(CreatorHandler::CexConnection {
-                cex: cex.clone(),
-                cex_connection: wallet_connection,
-                mint: creator_metadata.mint,
-                name: creator_metadata.token_name.clone(),
-                uri: creator_metadata.token_uri.clone(),
-                dev: creator_metadata.original_creator,
-                created_at: creator_metadata.created_at,
-                bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
-            }) {
-                error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
-                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
-                    "Failed to send cex connection request ({}): {}",
-                    cex.name, e
-                ))));
-            }
-
-            // cache receiver connection with cex
-            let address_key = format!("address:{}", receiver);
-            let address_data = serde_json::json!({
-                "name": cex.name.to_string(),
-                "address": cex.address.to_string(),
-            });
-            if let Err(e) = self.db.redis.kv.set(&address_key, &address_data).await {
-                error!("store_address_data_redis_failed::{}::error::{}", receiver, e);
-            }
-            child_token.cancel();
+        
+        if child_token.is_cancelled() {
             return Ok(());
         }
 
         // Then check direct CEX address detection
         if let Some(cex_name) = Cex::get_exchange_name(sender) {
             let cex = Cex::new(cex_name, sender);
-            wallet_connection.add_node(sender, true).await;
-            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
 
             if let Err(e) = self.sender.try_send(CreatorHandler::CexConnection {
                 cex: cex.clone(),
@@ -507,120 +459,31 @@ impl CreatorHandlerOperator {
             return Ok(());
         }
 
-        if let Ok(Some(cex_found)) = self.db.redis.kv.get::<Cex>(&sender.to_string()).await {
-            wallet_connection.add_node(sender, false).await;
-            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
-
-            if let Err(e) = self.sender.try_send(CreatorHandler::CexConnection {
-                cex: cex_found.clone(),
-                cex_connection: wallet_connection,
-                mint: creator_metadata.mint,
-                name: creator_metadata.token_name.clone(),
-                uri: creator_metadata.token_uri.clone(),
-                dev: creator_metadata.original_creator,
-                created_at: creator_metadata.created_at,
-                bonding_curve: creator_metadata.bonding_curve.unwrap_or_default(),
-            }) {
-                error!("failed_to_send_cex_connection_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}", sender, receiver, amount, timestamp, e);
-                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
-                    "Failed to send cex connection request ({}): {}",
-                    cex_found.name, e
-                ))));
-            }
-            info!(
-                "sender_cex_connection_found::mint::{}::cex::{}::depth::{}",
-                creator_metadata.mint, cex_found.name, receiver_depth
-            );
-            child_token.cancel();
+        debug!("current_depth_bfs_level::mint::{}::depth::{}", creator_metadata.mint, depth);
+        if depth >= creator_metadata.max_depth {
+            error!("max_depth_reached_bfs_level::mint::{}::depth::{}", creator_metadata.mint, depth);
+            creator_metadata.empty_queue().await;
             return Ok(());
         }
-
-        // Check if receiver was already visited and update BFS state
-        if let Some((depth, mut neighbors)) = creator_metadata.get_visited(&receiver).await {
-            neighbors.insert(0, sender);
-            
-            // Check if sender should be skipped (visited or currently being processed)
-            if creator_metadata.should_skip_address(&sender).await {
-                debug!("skipping_sender_already_processed::sender::{}::receiver::{}::depth::{}", 
-                    sender, receiver, depth);
-                // Update receiver's neighbors but don't process sender
-                creator_metadata.mark_visited(receiver, depth, neighbors).await;
-                return Ok(());
-            }
-            
-            // Sender not visited yet, calculate depth and add to BFS
-            let sender_depth = depth + 1;
-            let max_depth = creator_metadata.max_depth;
-            
-            // Check max depth before adding to queue
-            if sender_depth > max_depth {
-                debug!("sender_exceeds_max_depth::sender::{}::depth::{}::max_depth::{}", 
-                    sender, sender_depth, max_depth);
-                return Ok(());
-            }
-            
-            creator_metadata.mark_visited(sender, sender_depth, neighbors.clone()).await;
-            creator_metadata.push_to_queue((sender, sender_depth, neighbors)).await;
-            creator_metadata.add_to_history(sender).await;
-            
-            // Add to wallet graph
-            wallet_connection.add_node(sender, false).await;
-            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
-            
-            // Start the pipeline
-            if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
-                creator_metadata,
-                sender,
-                child_token,
-                creator_analyzer_config,
-            }) {
-                error!(
-                    "failed_to_send_process_sender_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}",
-                    sender, receiver, amount, timestamp, e
-                );
-                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
-                    "Failed to send process sender request: {}",
-                    e
-                ))));
-            }
-            
-            info!("added_sender_to_bfs_queue::sender::{}::depth::{}", sender, sender_depth);
-        } else {
-            // Receiver not visited - check if sender should be skipped
-            if creator_metadata.should_skip_address(&sender).await {
-                debug!("skipping_sender_already_processed::sender::{}::receiver::{}", 
-                    sender, receiver);
-                return Ok(());
-            }
-            
-            // First time seeing this transfer path - start from sender
-            creator_metadata.mark_visited(sender, 1, vec![sender]).await;
-            creator_metadata.push_to_queue((sender, 1, vec![sender])).await;
-            creator_metadata.add_to_history(sender).await;
-            
-            // Add to wallet graph
-            wallet_connection.add_node(sender, false).await;
-            wallet_connection.add_edge(sender, receiver, amount, timestamp).await;
-            
-            // Start the pipeline
-            if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
-                creator_metadata: creator_metadata.clone(),
-                sender,
-                child_token: child_token.clone(),
-                creator_analyzer_config,
-            }) {
-                error!(
-                    "failed_to_send_process_sender_request::sender::{}::receiver::{}::error::{}",
-                    sender, receiver, e
-                );
-                return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
-                    "Failed to send process sender request: {}",
-                    e
-                ))));
-            }
-            
-            info!("added_sender_as_new_transfer::sender::{}", sender);
+        
+        // Start the pipeline
+        if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
+            creator_metadata,
+            sender,
+            child_token,
+            creator_analyzer_config,
+            depth,
+        }) {
+            error!(
+                "failed_to_send_process_sender_request::sender::{}::receiver::{}::amount::{}::timestamp::{}::error::{}",
+                sender, receiver, amount, timestamp, e
+            );
+            return Err(err_with_loc!(HandlerError::SendCreatorHandlerError(format!(
+                "Failed to send process sender request: {}",
+                e
+            ))));
         }
+
 
         Ok(())
     }

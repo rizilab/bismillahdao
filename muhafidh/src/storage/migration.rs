@@ -188,6 +188,7 @@ impl Migrator {
                     symbol TEXT NOT NULL,
                     uri TEXT NOT NULL,
                     creator TEXT NOT NULL,
+                    platform TEXT NOT NULL,
                     created_at BIGINT NOT NULL,
                     cex_sources TEXT[] DEFAULT NULL,
                     cex_updated_at BIGINT DEFAULT NULL,

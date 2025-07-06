@@ -27,6 +27,7 @@ pub enum CreatorHandler {
         sender: Pubkey,
         child_token: CancellationToken,
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+        depth: usize,
     },
     CexConnection {
         cex: Cex,
@@ -42,6 +43,7 @@ pub enum CreatorHandler {
         creator_metadata: Arc<CreatorMetadata>,
         child_token: CancellationToken,
         creator_analyzer_config: Arc<CreatorAnalyzerConfig>,
+        depth: usize,
     },
     MaxDepthReached {
         creator_metadata: Arc<CreatorMetadata>,
