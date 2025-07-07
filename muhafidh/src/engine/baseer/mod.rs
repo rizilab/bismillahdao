@@ -47,7 +47,7 @@ impl Baseer {
         let mut rpc_config = config.rpc.clone();
         rpc_config.init_runtime_state().await;
         let rpc_config = Arc::new(rpc_config);
-        let (operator_sender, operator_receiver) = mpsc::channel(1000);
+        let (operator_sender, operator_receiver) = mpsc::channel(10000);
         let creator_handler = Arc::new(CreatorHandlerOperator::new(
             db_engine.clone(),
             shutdown_signal.clone(),
@@ -64,7 +64,7 @@ impl Baseer {
         };
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
-        let (sender, receiver) = mpsc::channel(1000);
+        let (sender, receiver) = mpsc::channel(5000);
 
         let token_creator_analyzer_handle =
             baseer.spawn_new_token_creator_analyzer(receiver, operator_sender.clone(), cancellation_token.clone());

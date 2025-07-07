@@ -19,7 +19,7 @@ pub fn calculate_backoff_with_jitter(
     max_delay_ms: u64,
 ) -> Duration {
     // Exponential backoff: delay = base * 2^attempt
-    let exponential_delay = base_delay_ms.saturating_mul(2u64.saturating_pow(attempt as u32));
+    let exponential_delay = base_delay_ms.saturating_mul(3u64.saturating_pow(attempt as u32));
 
     // Cap at max delay
     let capped_delay = exponential_delay.min(max_delay_ms);

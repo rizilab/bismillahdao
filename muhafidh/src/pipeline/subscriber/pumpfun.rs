@@ -9,7 +9,7 @@ use carbon_rpc_block_subscribe_datasource::Filters;
 use carbon_rpc_block_subscribe_datasource::RpcBlockSubscribe;
 use solana_client::rpc_config::RpcBlockSubscribeConfig;
 use solana_client::rpc_config::RpcBlockSubscribeFilter;
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_commitment_config::CommitmentConfig;
 use tracing::debug;
 use tracing::info;
 

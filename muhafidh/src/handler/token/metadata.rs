@@ -12,6 +12,7 @@ use crate::Result;
 use crate::err_with_loc;
 use crate::error::HandlerError;
 use crate::handler::shutdown::ShutdownSignal;
+use crate::model::platform::Platform;
 use crate::model::token::TokenMetadata;
 use crate::storage::StorageEngine;
 use crate::storage::redis::model::NewTokenCache;
@@ -58,8 +59,6 @@ impl TokenHandlerMetadata {
         // Publish event for cross-service communication
         let new_token_cache = NewTokenCache::from(token.clone());
         self.db.redis.queue.publish("new_token_created", &new_token_cache).await?;
-
-        debug!("stored_new_token_metadata_at::{}::<{}>::<{}>", token.created_at, token.mint, token.creator);
         Ok(())
     }
 }
@@ -120,6 +119,7 @@ impl TokenHandlerMetadataOperator {
         &self,
         create_data: &Create,
         accounts: &CreateInstructionAccounts,
+        platform: Platform,
         block_time: u64,
     ) -> Result<()> {
         let token_metadata = TokenMetadata::new(
@@ -129,6 +129,7 @@ impl TokenHandlerMetadataOperator {
             create_data.symbol.clone(),
             create_data.uri.clone(),
             create_data.creator,
+            platform.to_string(),
             block_time,
             Some(accounts.associated_bonding_curve),
             false,      // is_bonded

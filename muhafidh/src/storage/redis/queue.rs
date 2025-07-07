@@ -97,7 +97,7 @@ impl TokenMetadataQueue {
                 err_with_loc!(RedisClientError::RedisError(e))
             })?;
 
-        debug!("redis_add_unprocessed_account_done::account::{}", account.address);
+        debug!("redis_add_unprocessed_account_done::account::{}", account.get_analyzed_account().await);
         Ok(())
     }
 
@@ -122,7 +122,7 @@ impl TokenMetadataQueue {
                 err_with_loc!(RedisClientError::RedisError(e))
             })?;
 
-        debug!("redis_add_failed_account_done::account::{}", failed.address);
+        debug!("redis_add_failed_account_done::account::{}", failed.get_analyzed_account().await);
         Ok(())
     }
 

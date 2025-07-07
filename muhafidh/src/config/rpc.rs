@@ -8,7 +8,7 @@ use std::time::Instant;
 use serde::Deserialize;
 use serde::Serialize;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_commitment_config::CommitmentConfig;
 use tokio::sync::RwLock;
 use tracing::warn;
 

@@ -36,9 +36,9 @@ impl TokenMetadataDb {
         let conn = self.pool.get().await?;
         conn.execute(
             "INSERT INTO tokens (
-                mint, name, symbol, uri, creator, created_at, cex_sources, cex_updated_at, updated_at,
+                mint, name, symbol, uri, creator, platform, created_at, cex_sources, cex_updated_at, updated_at,
                 associated_bonding_curve, is_bonded, bonded_at, all_time_high_price, all_time_high_price_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             ON CONFLICT (mint) DO UPDATE SET
                 name = EXCLUDED.name,
                 symbol = EXCLUDED.symbol,
@@ -63,6 +63,7 @@ impl TokenMetadataDb {
                 &dto.symbol,
                 &dto.uri,
                 &dto.creator.to_string(),
+                &dto.platform.to_string(),
                 &(dto.created_at as i64),
                 &dto.cex_sources
                     .as_ref()
@@ -85,7 +86,7 @@ impl TokenMetadataDb {
             )))
         })?;
 
-        debug!("insert_token_metadata::{}", token.mint);
+        // debug!("insert_token_metadata::{}", token.mint);
         Ok(())
     }
 
@@ -115,7 +116,7 @@ impl TokenMetadataDb {
             err_with_loc!(PostgresClientError::QueryError(format!("failed_to_update_token_cex_sources: {}", e)))
         })?;
 
-        debug!("update_token_cex_sources::{}: {} sources", mint, cex_sources.len());
+        // debug!("update_token_cex_sources::{}: {} sources", mint, cex_sources.len());
         Ok(())
     }
 
@@ -163,7 +164,7 @@ impl TokenMetadataDb {
             err_with_loc!(PostgresClientError::QueryError(format!("failed_to_record_cex_token_relation: {}", e)))
         })?;
 
-        debug!("recorded_cex_activity::{}::{}", sanitized_cex_name, mint);
+        // debug!("recorded_cex_activity::{}::{}", sanitized_cex_name, mint);
         Ok(())
     }
 

@@ -10,6 +10,7 @@ use carbon_pumpfun_decoder::instructions::create::Create;
 use tracing::error;
 
 use crate::handler::token::metadata::TokenHandlerMetadataOperator;
+use crate::model::platform::Platform;
 
 pub struct PfProgramInstructionProcessor {
     token_handler: Arc<TokenHandlerMetadataOperator>,
@@ -32,7 +33,7 @@ impl Processor for PfProgramInstructionProcessor {
         data: Self::InputType,
         _metrics: Arc<MetricsCollection>,
     ) -> CarbonResult<()> {
-        let (meta, instruction, _nested_instructions) = data;
+        let (meta, instruction, _nested_instructions, _solana_instruction) = data;
         match &instruction.data {
             PumpfunInstruction::Create(account_meta) => {
                 // process_account_meta(account_meta);
@@ -47,7 +48,11 @@ impl Processor for PfProgramInstructionProcessor {
                     });
 
                     // Send to handler
-                    if let Err(e) = self.token_handler.store_token(&account_meta, &accounts, block_time).await {
+                    if let Err(e) = self
+                        .token_handler
+                        .store_token(&account_meta, &accounts, Platform::PumpFun, block_time)
+                        .await
+                    {
                         error!("store_token_failed::{}: {}", accounts.mint, e);
                     }
                 }

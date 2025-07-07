@@ -18,4 +18,6 @@ pub enum HandlerError {
     PipelineCreationError(String),
     #[error("Failed to query Redis: {0}")]
     RedisQueryError(String),
+    #[error("Failed to update graph: {0}")]
+    GraphError(String),
 }
