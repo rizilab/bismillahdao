@@ -19,7 +19,7 @@ impl Platform {
             _ => Platform::Unknown,
         }
     }
-    
+
     pub fn to_string(&self) -> String {
         match self {
             Platform::PumpFun => String::from("pumpfun"),

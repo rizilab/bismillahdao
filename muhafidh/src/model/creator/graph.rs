@@ -1,24 +1,24 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use petgraph::Graph;
+use petgraph::graph::NodeIndex;
 use serde::Deserialize;
 use serde::Serialize;
+use solana_account_decoder::UiAccountEncoding;
+use solana_client::rpc_config::RpcAccountInfoConfig;
+use solana_commitment_config::CommitmentConfig;
 use solana_pubkey::Pubkey;
 use tokio::sync::RwLock;
-use solana_client::rpc_config::RpcAccountInfoConfig;
-use crate::config::RpcProviderRole;
-use solana_commitment_config::CommitmentConfig;
-use solana_account_decoder::UiAccountEncoding;
-use crate::config::RpcConfig;
-use chrono::Utc;
-use petgraph::graph::NodeIndex;
-
-use crate::utils::lamports_to_sol;
-use crate::Result;
-use crate::error::HandlerError;
-use crate::err_with_loc;
 use tracing::error;
+
+use crate::Result;
+use crate::config::RpcConfig;
+use crate::config::RpcProviderRole;
+use crate::err_with_loc;
+use crate::error::HandlerError;
+use crate::utils::lamports_to_sol;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddressDetails {
@@ -85,7 +85,7 @@ impl CreatorConnectionGraph {
         if let Some(&idx) = self.node_indices.get(&address) {
             return idx;
         }
-        
+
         let solscan_url = format!("https://solscan.io/account/{}", address);
         let last_updated = Utc::now().timestamp_millis();
         let detail = AddressDetails {
@@ -142,46 +142,69 @@ impl CreatorConnectionGraph {
         self.graph.edge_weights().map(|edge| edge.clone()).collect()
     }
 
-    pub fn get_node_by_address(&self, address: Pubkey) -> Option<AddressNode> {
-        self.node_indices.get(&address).and_then(|idx| self.graph.node_weight(*idx).cloned())
+    pub fn get_node_by_address(
+        &self,
+        address: Pubkey,
+    ) -> Option<AddressNode> {
+        self.node_indices
+            .get(&address)
+            .and_then(|idx| self.graph.node_weight(*idx).cloned())
     }
 
-    pub fn get_edge_by_addresses(&self, from: Pubkey, to: Pubkey) -> Option<TransactionEdge> {
-        self.graph.find_edge(self.node_indices[&from], self.node_indices[&to]).and_then(|edge_idx| self.graph.edge_weight(edge_idx).cloned())
+    pub fn get_edge_by_addresses(
+        &self,
+        from: Pubkey,
+        to: Pubkey,
+    ) -> Option<TransactionEdge> {
+        self.graph
+            .find_edge(self.node_indices[&from], self.node_indices[&to])
+            .and_then(|edge_idx| self.graph.edge_weight(edge_idx).cloned())
     }
-    
-    pub async fn update_node_balance(&mut self, rpc_config: Arc<RpcConfig>) -> Result<()> {
+
+    pub async fn update_node_balance(
+        &mut self,
+        rpc_config: Arc<RpcConfig>,
+    ) -> Result<()> {
         let rpc_config = rpc_config.clone();
-        let pubkeys = self.graph.node_weights().map(|node| node.detail.address).collect::<Vec<Pubkey>>();
+        let pubkeys = self
+            .graph
+            .node_weights()
+            .map(|node| node.detail.address)
+            .collect::<Vec<Pubkey>>();
         let commitment_config = CommitmentConfig::processed();
-        
-        if let Some((client, _)) = rpc_config.get_next_client_for_role(
-            &RpcProviderRole::TransactionFetcher,
-            commitment_config
-        ).await { 
+
+        if let Some((client, _)) = rpc_config
+            .get_next_client_for_role(&RpcProviderRole::TransactionFetcher, commitment_config)
+            .await
+        {
             let config = RpcAccountInfoConfig {
                 encoding: Some(UiAccountEncoding::JsonParsed),
                 commitment: Some(commitment_config),
-                .. RpcAccountInfoConfig::default()
+                ..RpcAccountInfoConfig::default()
             };
-            
+
             match client.get_multiple_accounts_with_config(&pubkeys, config).await {
                 Ok(result) => {
                     let accounts = result.value;
                     for (i, account) in accounts.iter().enumerate() {
                         if let Some(acc) = account {
                             let balance = lamports_to_sol(acc.lamports);
-                            if let Some(idx) = self.graph.node_weights().position(|node| node.detail.address == pubkeys[i]) {
+                            if let Some(idx) =
+                                self.graph.node_weights().position(|node| node.detail.address == pubkeys[i])
+                            {
                                 let node_index = NodeIndex::new(idx);
                                 self.graph.node_weight_mut(node_index).unwrap().detail.sol_balance = balance;
                             }
                         }
                     }
-                }
+                },
                 Err(e) => {
                     error!("failed_to_get_multiple_accounts_with_config::error::{}", e);
-                    return Err(err_with_loc!(HandlerError::GraphError(format!("failed_to_get_multiple_accounts_with_config: {}", e))));
-                }
+                    return Err(err_with_loc!(HandlerError::GraphError(format!(
+                        "failed_to_get_multiple_accounts_with_config: {}",
+                        e
+                    ))));
+                },
             }
         }
         Ok(())

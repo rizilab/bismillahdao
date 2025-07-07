@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
 use solana_pubkey::Pubkey;
+use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
 
 use super::CreatorHandler;
-use crate::storage::redis::model::MaxDepthReachedCache;
 use crate::Result;
 use crate::config::CreatorAnalyzerConfig;
 use crate::config::RpcConfig;
 use crate::err_with_loc;
+use crate::error::HandlerError;
 use crate::handler::shutdown::ShutdownSignal;
 use crate::model::cex::Cex;
 use crate::model::creator::graph::SharedCreatorConnectionGraph;
@@ -22,8 +22,8 @@ use crate::model::dev::Dev;
 use crate::pipeline::crawler::creator::make_creator_crawler_pipeline;
 use crate::pipeline::processor::creator::CreatorInstructionProcessor;
 use crate::storage::StorageEngine;
+use crate::storage::redis::model::MaxDepthReachedCache;
 use crate::storage::redis::model::TokenAnalyzedCache;
-use crate::error::HandlerError;
 
 pub struct CreatorHandlerMetadata {
     receiver: mpsc::Receiver<CreatorHandler>,
@@ -92,8 +92,8 @@ impl CreatorHandlerMetadata {
         if let Err(e) = self.db.postgres.graph.store_connection_graph(&mint, &connection_graph).await {
             error!("store_connection_graph_pgrouting_failed::{}::mint::{}::error::{}", cex.name, mint, e);
             // Continue despite the error
-        } 
-        
+        }
+
         // Update Redis cache
         let token_key = mint.to_string();
         if let Ok(Some(mut token_metadata)) =
@@ -142,9 +142,9 @@ impl CreatorHandlerMetadata {
             edge_count: connection_graph.get_edge_count(),
             graph: connection_graph,
         };
-        
+
         // debug!("publishing_token_cex_updated::mint::{}::cex::{}", mint, cex.name);
-        
+
         if let Err(e) = self.db.redis.queue.publish("token_cex_updated", &event_data).await {
             error!("publish_token_cex_updated_event_failed::{}::mint::{}::error::{}", cex.name, mint, e);
         }
@@ -175,7 +175,7 @@ impl CreatorHandlerMetadata {
 
         let max_depth = creator_metadata.max_depth;
         let current_depth = depth + 1;
-        
+
         let processor = CreatorInstructionProcessor::new(
             creator_handler.clone(),
             creator_metadata.clone(),
@@ -187,10 +187,8 @@ impl CreatorHandlerMetadata {
         let operator_sender = operator_sender.clone();
 
         tokio::spawn(async move {
-            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, operator_sender)
-                .await
-            {
-                //TODO: remove analyzed_account from here
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, operator_sender).await {
+                // TODO: remove analyzed_account from here
                 Ok(Some((mut pipeline, _analyzed_account))) => {
                     if let Err(e) = pipeline.run().await {
                         error!("pipeline_run_failed_on_bfs_level::mint::{}::error::{}", creator_metadata.mint, e);
@@ -243,9 +241,7 @@ impl CreatorHandlerMetadata {
         );
         let operator_sender = operator_sender.clone();
         tokio::spawn(async move {
-            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, operator_sender)
-                .await
-            {
+            match make_creator_crawler_pipeline(processor.clone(), child_token, max_depth, operator_sender).await {
                 Ok(Some((mut pipeline, analyzed_account))) => {
                     if let Err(e) = pipeline.run().await {
                         error!("recovery_pipeline_run_failed::mint::{}::error::{}", creator_metadata.mint, e);
@@ -271,10 +267,10 @@ impl CreatorHandlerMetadata {
         creator_metadata: Arc<CreatorMetadata>,
     ) -> Result<()> {
         // debug!("process_max_depth_reached::mint::{}", creator_metadata.mint);
-   
+
         let mint = creator_metadata.mint;
         let mut connection_graph = creator_metadata.wallet_connection.clone_graph().await;
-        
+
         // TODO: too long to update node balance
         // if let Err(e) = connection_graph.update_node_balance(self.rpc_config.clone()).await {
         //     error!("update_connection_graph_failed::mint::{}::error::{}", mint.clone(), e);
@@ -295,7 +291,7 @@ impl CreatorHandlerMetadata {
         if let Err(e) = self.db.redis.kv.set_graph(&graph_key, &connection_graph).await {
             error!("store_connection_graph_redis_failed::mint::{}::error::{}", mint, e);
         }
-        
+
         let dev_name = Dev::get_dev_name(creator_metadata.original_creator.clone()).unwrap_or_default();
         // Publish event
         let event_data = MaxDepthReachedCache {
@@ -318,7 +314,6 @@ impl CreatorHandlerMetadata {
 
         Ok(())
     }
-
 }
 
 async fn run_creator_handler_metadata(mut creator_handler_metadata: CreatorHandlerMetadata) {
@@ -419,7 +414,7 @@ impl CreatorHandlerOperator {
         depth: usize,
     ) -> Result<()> {
         let wallet_connection = creator_metadata.wallet_connection.clone();
-        
+
         if child_token.is_cancelled() {
             return Ok(());
         }
@@ -459,13 +454,14 @@ impl CreatorHandlerOperator {
             return Ok(());
         }
 
-        debug!("current_depth_bfs_level::mint::{}::depth::{}", creator_metadata.mint, depth);
+        error!("current_depth_bfs_level::mint::{}::depth::{}::sender::{}::queue_size::{}", creator_metadata.mint, depth, sender, creator_metadata.get_queue_size().await);
         if depth >= creator_metadata.max_depth {
             error!("max_depth_reached_bfs_level::mint::{}::depth::{}", creator_metadata.mint, depth);
             creator_metadata.empty_queue().await;
+            child_token.cancel();
             return Ok(());
         }
-        
+
         // Start the pipeline
         if let Err(e) = self.sender.try_send(CreatorHandler::ProcessBfsLevel {
             creator_metadata,
@@ -483,7 +479,6 @@ impl CreatorHandlerOperator {
                 e
             ))));
         }
-
 
         Ok(())
     }

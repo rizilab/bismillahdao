@@ -28,17 +28,8 @@ pub async fn make_creator_crawler_pipeline(
     let creator_metadata = processor.get_creator_metadata();
     
     let current_depth = processor.get_current_depth().await;
-    // debug!("make_creator_crawler_pipeline::start::mint::{}::max_depth::{}", 
-    //     creator_metadata.mint, max_depth);
-    debug!("current_depth::mint::{}::depth::{}", creator_metadata.mint, current_depth);
-    if current_depth >= max_depth {
-        error!("max_depth_reached::mint::{}::depth::{}", creator_metadata.mint, current_depth);
-        creator_metadata.empty_queue().await;
-        return Ok(None);
-    }
-    
+
     if let Some((analyzed_account, depth, parent_address)) = creator_metadata.pop_from_queue().await {
-        error!("pop_from_queue::mint::{}::depth::{}", creator_metadata.mint, depth);
         let creator_analyzer_config = processor.get_creator_analyzer_config();
         let rpc_config = processor.get_rpc_config();
         

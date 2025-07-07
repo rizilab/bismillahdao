@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -121,12 +122,11 @@ pub struct CreatorMetadata {
     pub cex_sources: Vec<Pubkey>,
     pub cex_updated_at: u64,
     pub wallet_connection: SharedCreatorConnectionGraph,
-    
+
     // BFS state - serialized as SerializableBfsState
     // #[serde(with = "bfs_state_serde")] // TODO: Uncomment this when we have a better way to serialize the BFS state
     #[serde(skip)]
     pub bfs_state: SharedBfsState,
-
 }
 
 // Custom serde module for BFS state
@@ -160,8 +160,8 @@ pub struct CreatorMetadata {
 impl CreatorMetadata {
     // Create from NewTokenCache
     pub async fn initialize(
-        token: NewTokenCache, 
-        max_depth: usize
+        token: NewTokenCache,
+        max_depth: usize,
     ) -> Self {
         let metadata = Self {
             mint: token.mint,
@@ -182,7 +182,7 @@ impl CreatorMetadata {
             wallet_connection: SharedCreatorConnectionGraph::new(),
             bfs_state: SharedBfsState::initialize(token.creator),
         };
-        
+
         metadata
     }
 
@@ -216,13 +216,17 @@ impl CreatorMetadata {
     ) {
         self.bfs_state.queue.write().await.push_back(item);
     }
-    
+
     pub async fn is_queue_empty(&self) -> bool {
         self.bfs_state.queue.read().await.is_empty()
     }
-    
+
     pub async fn empty_queue(&self) {
         self.bfs_state.queue.write().await.clear();
+    }
+    
+    pub async fn get_queue_size(&self) -> usize {
+        self.bfs_state.queue.read().await.len()
     }
 
     pub async fn add_to_history(
@@ -250,10 +254,13 @@ impl CreatorMetadata {
         self.bfs_state.visited_addresses.read().await.contains(address)
     }
 
-    pub async fn set_analyzed_account(&self, analyzed_account: Pubkey) {
+    pub async fn set_analyzed_account(
+        &self,
+        analyzed_account: Pubkey,
+    ) {
         *self.analyzed_account.write().await = analyzed_account;
     }
-    
+
     pub async fn get_analyzed_account(&self) -> Pubkey {
         self.analyzed_account.read().await.clone()
     }

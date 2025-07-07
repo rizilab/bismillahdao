@@ -15,8 +15,8 @@ use carbon_core::transformers::transaction_metadata_from_original_meta;
 use futures::StreamExt;
 use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
 use solana_client::rpc_config::RpcTransactionConfig;
-use solana_pubkey::Pubkey;
 use solana_commitment_config::CommitmentConfig;
+use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use solana_transaction_status::EncodedConfirmedTransactionWithStatusMeta;
 use solana_transaction_status::UiLoadedAddresses;
@@ -161,15 +161,14 @@ fn signature_fetcher(
         let mut current_before_signature = filters.before_signature;
         let until_signature = filters.until_signature;
         let max_retries = config.max_retries;
-        
+
         // Collect all signatures in a vector
         let mut all_signatures: Vec<Signature> = Vec::with_capacity(5000);
         let max_iterations = 5; // Maximum 5 iterations to get up to 5000 signatures
 
         'outer: for iteration in 0..max_iterations {
             if all_signatures.len() >= 5000 {
-                debug!("signature_limit_reached::account::{}::total::{}", 
-                    analyzed_account, all_signatures.len());
+                debug!("signature_limit_reached::account::{}::total::{}", analyzed_account, all_signatures.len());
                 break;
             }
 
@@ -223,7 +222,7 @@ fn signature_fetcher(
                                         all_signatures.push(signature);
                                     }
 
-                                    // debug!("batch_collected::iteration::{}::batch_size::{}::total_collected::{}", 
+                                    // debug!("batch_collected::iteration::{}::batch_size::{}::total_collected::{}",
                                     //     iteration + 1, signatures_in_batch, all_signatures.len());
 
                                     // If batch was full (1000) and we have room for more, continue to next iteration
@@ -238,7 +237,7 @@ fn signature_fetcher(
                                     break 'outer;
                                 }
                                 Err(e) => {
-                                    error!("error_fetching_signatures::provider::{}::account::{}::error::{}", 
+                                    error!("error_fetching_signatures::provider::{}::account::{}::error::{}",
                                         provider_name, analyzed_account, e);
 
                                     retry_count += 1;
@@ -306,16 +305,20 @@ fn signature_fetcher(
         let start = Instant::now();
         let time_taken = start.elapsed().as_millis();
 
-        metrics.record_histogram("transaction_crawler_signatures_fetch_times_milliseconds", time_taken as f64)
-                .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
+        metrics
+            .record_histogram("transaction_crawler_signatures_fetch_times_milliseconds", time_taken as f64)
+            .await
+            .unwrap_or_else(|value| error!("Error recording metric: {}", value));
 
-        metrics.increment_counter("transaction_crawler_signatures_fetched", all_signatures.len() as u64)
-                .await.unwrap_or_else(|value| error!("Error recording metric: {}", value));
+        metrics
+            .increment_counter("transaction_crawler_signatures_fetched", all_signatures.len() as u64)
+            .await
+            .unwrap_or_else(|value| error!("Error recording metric: {}", value));
 
         // Now send all signatures to the transaction fetcher
         let max_signatures_to_check = config.max_signatures_to_check;
         let signatures_to_send = std::cmp::min(all_signatures.len(), max_signatures_to_check);
-        
+
         for (idx, signature) in all_signatures.into_iter().take(signatures_to_send).enumerate() {
             // Check if we're cancelled before sending each signature
             if cancellation_token.is_cancelled() {

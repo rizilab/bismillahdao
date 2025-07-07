@@ -1,14 +1,14 @@
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use carbon_core::deserialize::ArrangeAccounts;
 use carbon_core::error::CarbonResult;
 use carbon_core::instruction::InstructionProcessorInputType;
 use carbon_core::metrics::MetricsCollection;
 use carbon_core::processor::Processor;
-use carbon_system_program_decoder::instructions::transfer_sol::TransferSolInstructionAccounts;
 use carbon_system_program_decoder::instructions::SystemProgramInstruction;
 use carbon_system_program_decoder::instructions::transfer_sol::TransferSol;
+use carbon_system_program_decoder::instructions::transfer_sol::TransferSolInstructionAccounts;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::error;
@@ -56,7 +56,10 @@ impl CreatorInstructionProcessor {
         self.current_depth.read().await.clone()
     }
 
-    pub async fn set_current_depth(&mut self, depth: usize) {
+    pub async fn set_current_depth(
+        &mut self,
+        depth: usize,
+    ) {
         *self.current_depth.write().await = depth;
     }
 
@@ -86,13 +89,17 @@ impl CreatorInstructionProcessor {
 
         debug!(
             "adding_to_failed_queue::mint::{}::account::{}::retry_count::{}::status::{:?}",
-            failed_metadata.mint, failed_metadata.get_analyzed_account().await, failed_metadata.retry_count, failed_metadata.status
+            failed_metadata.mint,
+            failed_metadata.get_analyzed_account().await,
+            failed_metadata.retry_count,
+            failed_metadata.status
         );
 
         if let Err(e) = self.creator_handler.add_failed_account(&failed_metadata).await {
             error!(
                 "failed_to_add_to_failed_queue_after_pipeline_failure::account::{}::error::{}",
-                failed_metadata.get_analyzed_account().await, e
+                failed_metadata.get_analyzed_account().await,
+                e
             );
         }
     }
@@ -118,18 +125,23 @@ impl Processor for CreatorInstructionProcessor {
                 let creator_analyzer_config = self.creator_analyzer_config.clone();
                 let min_transfer_amount = self.creator_analyzer_config.min_transfer_amount;
 
-                if let Some(TransferSolInstructionAccounts { source, destination }) = accounts {
-                    if amount > min_transfer_amount
-                        && source != analyzed_account
-                        && destination == analyzed_account
-                    {
+                if let Some(TransferSolInstructionAccounts {
+                    source,
+                    destination,
+                }) = accounts
+                {
+                    if amount > min_transfer_amount && source != analyzed_account && destination == analyzed_account {
                         let source_idx = self.creator_metadata.wallet_connection.add_node(source, false).await;
-                        let destination_idx = self.creator_metadata.wallet_connection.add_node(destination, false).await;
-                        
-                        self.creator_metadata.wallet_connection.add_edge(source_idx, destination_idx, amount, chrono::Utc::now().timestamp_millis()).await;
+                        let destination_idx =
+                            self.creator_metadata.wallet_connection.add_node(destination, false).await;
+
+                        self.creator_metadata
+                            .wallet_connection
+                            .add_edge(source_idx, destination_idx, amount, chrono::Utc::now().timestamp_millis())
+                            .await;
                         let depth = self.get_current_depth().await;
                         creator_metadata.push_to_queue((source, depth + 1, analyzed_account)).await;
-                        
+
                         let timestamp = meta
                             .transaction_metadata
                             .block_time

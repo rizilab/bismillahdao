@@ -12,8 +12,8 @@ use crate::Result;
 use crate::err_with_loc;
 use crate::error::HandlerError;
 use crate::handler::shutdown::ShutdownSignal;
-use crate::model::token::TokenMetadata;
 use crate::model::platform::Platform;
+use crate::model::token::TokenMetadata;
 use crate::storage::StorageEngine;
 use crate::storage::redis::model::NewTokenCache;
 struct TokenHandlerMetadata {
