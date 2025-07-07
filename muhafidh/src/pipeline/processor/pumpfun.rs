@@ -7,10 +7,10 @@ use carbon_core::metrics::MetricsCollection;
 use carbon_core::processor::Processor;
 use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
 use carbon_pumpfun_decoder::instructions::create::Create;
-use crate::model::platform::Platform;
 use tracing::error;
 
 use crate::handler::token::metadata::TokenHandlerMetadataOperator;
+use crate::model::platform::Platform;
 
 pub struct PfProgramInstructionProcessor {
     token_handler: Arc<TokenHandlerMetadataOperator>,
@@ -48,7 +48,11 @@ impl Processor for PfProgramInstructionProcessor {
                     });
 
                     // Send to handler
-                    if let Err(e) = self.token_handler.store_token(&account_meta, &accounts, Platform::PumpFun, block_time).await {
+                    if let Err(e) = self
+                        .token_handler
+                        .store_token(&account_meta, &accounts, Platform::PumpFun, block_time)
+                        .await
+                    {
                         error!("store_token_failed::{}: {}", accounts.mint, e);
                     }
                 }

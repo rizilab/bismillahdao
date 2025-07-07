@@ -224,7 +224,7 @@ impl CreatorMetadata {
     pub async fn empty_queue(&self) {
         self.bfs_state.queue.write().await.clear();
     }
-    
+
     pub async fn get_queue_size(&self) -> usize {
         self.bfs_state.queue.read().await.len()
     }

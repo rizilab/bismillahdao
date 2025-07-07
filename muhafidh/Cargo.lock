@@ -848,8 +848,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-core"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-trait",
  "borsh 0.10.4",
@@ -872,12 +872,13 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]
 name = "carbon-log-metrics"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-trait",
  "carbon-core",
@@ -887,13 +888,13 @@ dependencies = [
 
 [[package]]
 name = "carbon-macros"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 
 [[package]]
 name = "carbon-proc-macros"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "borsh-derive-internal",
  "hex",
@@ -905,8 +906,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-pump-swap-decoder"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "carbon-core",
  "serde",
@@ -917,8 +918,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-pumpfun-decoder"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "carbon-core",
  "serde",
@@ -928,9 +929,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "carbon-raydium-launchpad-decoder"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
+dependencies = [
+ "carbon-core",
+ "serde",
+ "serde-big-array",
+ "solana-account",
+ "solana-instruction",
+ "solana-pubkey",
+]
+
+[[package]]
 name = "carbon-rpc-block-subscribe-datasource"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-trait",
  "carbon-core",
@@ -944,8 +958,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-rpc-program-subscribe-datasource"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-trait",
  "carbon-core",
@@ -960,8 +974,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-rpc-transaction-crawler-datasource"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -979,8 +993,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-system-program-decoder"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "carbon-core",
  "serde",
@@ -992,8 +1006,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-token-2022-decoder"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "carbon-core",
  "serde",
@@ -1005,8 +1019,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-token-program-decoder"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-trait",
  "carbon-core",
@@ -1020,8 +1034,8 @@ dependencies = [
 
 [[package]]
 name = "carbon-yellowstone-grpc-datasource"
-version = "0.8.1"
-source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#79a865fd1b2ad486fd56d044743fb91578ad468f"
+version = "0.9.0"
+source = "git+https://github.com/sevenlabs-hq/carbon?branch=main#604b5dc382a8b83b1df9625e44c335eab11e1cf1"
 dependencies = [
  "async-trait",
  "carbon-core",
@@ -1039,9 +1053,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.28"
+version = "1.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ad45f4f74e4e20eaa392913b7b33a7091c87e59628f4dd27888205ad888843c"
+checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
 dependencies = [
  "jobserver",
  "libc",
@@ -2925,6 +2939,7 @@ dependencies = [
  "carbon-log-metrics",
  "carbon-pump-swap-decoder",
  "carbon-pumpfun-decoder",
+ "carbon-raydium-launchpad-decoder",
  "carbon-rpc-block-subscribe-datasource",
  "carbon-rpc-program-subscribe-datasource",
  "carbon-rpc-transaction-crawler-datasource",
@@ -8310,6 +8325,18 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "uuid"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
+dependencies = [
+ "getrandom 0.3.3",
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "valuable"

@@ -105,7 +105,7 @@ impl Baseer {
                         let rpc_config_clone = rpc_config.clone();
                         let creator_metadata = CreatorMetadata::initialize(token.clone(), max_depth).await;
                         let sender = sender.clone();
-                        
+
                         tokio::spawn(async move {
                             let creator_metadata = Arc::new(creator_metadata);
                             let processor = CreatorInstructionProcessor::new(creator_handler.clone(), creator_metadata.clone(), child_token.clone(), creator_analyzer_config.clone(), rpc_config_clone, Arc::new(RwLock::new(0)));

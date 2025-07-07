@@ -66,19 +66,20 @@ spl-memo = "6.0.0"
 spl-token = "8.0.0"
 
 # carbon
-carbon-core = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-log-metrics = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-pump-swap-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-pumpfun-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-system-program-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-token-program-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-token-2022-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-rpc-block-subscribe-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-rpc-program-subscribe-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
-carbon-rpc-transaction-crawler-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
+carbon-core = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-log-metrics = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-pump-swap-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-pumpfun-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-system-program-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-token-program-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-token-2022-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-rpc-block-subscribe-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-rpc-program-subscribe-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-rpc-transaction-crawler-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
+carbon-raydium-launchpad-decoder = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
 
 # geyser
-carbon-yellowstone-grpc-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.8.0" }
+carbon-yellowstone-grpc-datasource = { git = "https://github.com/sevenlabs-hq/carbon", branch = "main", version = "0.9.0" }
 yellowstone-grpc-client = { version = "6.0.0" }
 yellowstone-grpc-proto = { version = "6.0.0" }
 

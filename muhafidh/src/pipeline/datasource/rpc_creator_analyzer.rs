@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use carbon_core::datasource::Datasource;
+use carbon_core::datasource::DatasourceId;
 use carbon_core::datasource::TransactionUpdate;
 use carbon_core::datasource::Update;
 use carbon_core::datasource::UpdateType;
@@ -87,13 +88,15 @@ impl RpcTransactionAnalyzer {
 impl Datasource for RpcTransactionAnalyzer {
     async fn consume(
         &self,
-        sender: Sender<Update>,
+        id: DatasourceId,
+        sender: Sender<(Update, DatasourceId)>,
         cancellation_token: CancellationToken,
         metrics: Arc<MetricsCollection>,
     ) -> CarbonResult<()> {
         let rpc_config = self.rpc_config.clone();
         let analyzed_account = self.analyzed_account;
         let filters = self.filters.clone();
+        let id = id.clone();
         let sender = sender.clone();
         let commitment = self.commitment;
         let max_concurrent_requests = self.config.max_concurrent_requests;
@@ -127,6 +130,7 @@ impl Datasource for RpcTransactionAnalyzer {
         let task_processor = task_processor(
             transaction_receiver,
             sender,
+            id,
             filters,
             cancellation_token.clone(),
             metrics.clone(),
@@ -482,7 +486,8 @@ fn transaction_fetcher(
 
 fn task_processor(
     transaction_receiver: Receiver<(Signature, EncodedConfirmedTransactionWithStatusMeta)>,
-    sender: Sender<Update>,
+    sender: Sender<(Update, DatasourceId)>,
+    id: DatasourceId,
     filters: Filters,
     cancellation_token: CancellationToken,
     metrics: Arc<MetricsCollection>,
@@ -490,6 +495,7 @@ fn task_processor(
 ) -> JoinHandle<()> {
     let mut transaction_receiver = transaction_receiver;
     let sender = sender.clone();
+    let id_for_loop = id.clone();
 
     tokio::spawn(async move {
         loop {
@@ -559,7 +565,7 @@ fn task_processor(
                         }
                     }
 
-                          // Get metadata
+                    // Get metadata
                     let Ok(meta_needed) = transaction_metadata_from_original_meta(meta_original) else {
                               error!("error_getting_metadata_from_transaction_original_meta::signature::{}", signature);
                         continue;
@@ -588,7 +594,7 @@ fn task_processor(
                     let max_send_retries = config.max_retries;
 
                     loop {
-                        match sender.try_send(update.clone()) {
+                        match sender.try_send((update.clone(), id_for_loop.clone())) {
                             Ok(()) => {
                                 if attempt > 0 {
                                     debug!("successful_send_after_retry::signature::{}::attempts::{}", signature, attempt + 1);

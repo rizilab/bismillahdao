@@ -454,7 +454,13 @@ impl CreatorHandlerOperator {
             return Ok(());
         }
 
-        error!("current_depth_bfs_level::mint::{}::depth::{}::sender::{}::queue_size::{}", creator_metadata.mint, depth, sender, creator_metadata.get_queue_size().await);
+        error!(
+            "current_depth_bfs_level::mint::{}::depth::{}::sender::{}::queue_size::{}",
+            creator_metadata.mint,
+            depth,
+            sender,
+            creator_metadata.get_queue_size().await
+        );
         if depth >= creator_metadata.max_depth {
             error!("max_depth_reached_bfs_level::mint::{}::depth::{}", creator_metadata.mint, depth);
             creator_metadata.empty_queue().await;
